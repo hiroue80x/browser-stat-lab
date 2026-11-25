@@ -138,6 +138,9 @@ svg.mini { width: 100%; height: auto; display: block; } svg.mini text { font-fam
 .dli:hover { background: var(--accent-soft); }
 .dli.on { background: var(--accent); color: #fff; }
 .dli.on span { color: #fff; opacity: .9; }
+.dual2 { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; margin-top: 6px; align-items: stretch; } .dual2 .dlbtns { justify-content: center; }
+.corbox { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); } h4.corh { margin: 0 0 2px; font-size: 13px; } small.pp { color: var(--muted); font-size: 10.5px; }
+@media (max-width: 640px) { .dual2 { grid-template-columns: 1fr !important; } .dual2 > * { grid-row: auto !important; grid-column: auto !important; } }
 .dlbtns { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .dlbtns .btn { white-space: nowrap; padding: 4px 8px; }
 .dlempty { padding: 14px 10px; color: var(--muted); font-size: 12px; }

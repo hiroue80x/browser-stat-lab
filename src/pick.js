@@ -32,12 +32,15 @@ function pickDefaults() {
   const ok = n => n === '' || state.db.cols.some(c => c.name === n);
   if (![P.indep.y, P.indep.g].every(ok)) P.indep = D.indep;
   if (!P.paired.cols.every(ok)) P.paired = D.paired;
-  if (![P.bivar.x, P.bivar.y, ...(P.bivar.more || [])].every(ok)) P.bivar = D.bivar;
+  if (![P.bivar.x, P.bivar.y, ...(P.bivar.more || []), ...(P.bivar.list || [])].every(ok)) P.bivar = D.bivar;
   if (![P.table.r, P.table.c].every(ok)) P.table = D.table;
   return P;
 }
 function pickSel(id, cols, val, blank) {
   return `<select id="${id}" data-pk="${id}">${blank ? `<option value="">${blank}</option>` : ''}${cols.map(c => `<option value="${esc(c.name)}" ${c.name === val ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
+}
+function pickDual(id, cols, boxes, getters, setter) { // 左の一覧から右の箱へ入れる形（corr.js の DL2）
+  return `<div style="flex-basis:100%">${DL2.html(id, { items: cols.map(c => ({ key: c.name, name: c.name })), leftTitle: '読み込んだデータの数値の列', leftHeight: 170, boxes, get: k => getters[k]().slice(), set: (k, v) => { setter(k, v); save(); }, rerender: () => renderSheet() })}</div>`;
 }
 function pickChecks(key, cols, vals) {
   return `<span class="pkchecks">${cols.map(c => `<label><input type="checkbox" data-pkc="${key}" value="${esc(c.name)}" ${vals.includes(c.name) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</span>`;
@@ -55,11 +58,12 @@ function pickBox() {
     form = `<label>測定値 ${pickSel('pk-y', num, P.indep.y)}</label><label>群を表す列 ${pickSel('pk-g', grp, P.indep.g)}</label>`;
     note = '測定値の列を、群ごとの列に分けて並べます。';
   } else if (state.fmt === 'paired') {
-    form = `<span>条件・時点の列（2 つ以上）</span>${pickChecks('paired', num, P.paired.cols)}`;
-    note = '選んだ列を、1 行 ＝ 1 人のまま並べます。列の順番は、データの列の順です。';
+    form = pickDual('pkpaired', num, [{ key: 'cols', title: '条件・時点の列（入れた順に並べます）', empty: '2 つ以上入れてください', height: 130 }], { cols: () => P.paired.cols }, (k, v) => { P.paired.cols = v; });
+    note = '箱に入れた列を、入れた順に、1 行 ＝ 1 人のまま並べます。';
   } else if (state.fmt === 'bivar') {
-    form = `<label>X（説明変数）${pickSel('pk-x', num, P.bivar.x)}</label><label>Y（目的変数）${pickSel('pk-yy', num, P.bivar.y)}</label><span>ほかに加える列（相関行列用）</span>${pickChecks('more', num.filter(c => c.name !== P.bivar.x && c.name !== P.bivar.y), P.bivar.more || [])}`;
-    note = 'X・Y の順に並べます。';
+    if (!P.bivar.list) P.bivar.list = [P.bivar.x, P.bivar.y, ...(P.bivar.more || [])].filter(Boolean);
+    form = pickDual('pkbivar', num, [{ key: 'list', title: '並べる列（1 番目が X、2 番目が Y）', empty: '2 つ以上入れてください', height: 130 }], { list: () => P.bivar.list }, (k, v) => { P.bivar.list = v; });
+    note = '入れた順に並べます（単回帰・散布図は 1 番目が X、2 番目が Y）。相関係数で使う変数は、並べたあと解析パネルの箱で選べます。';
   } else {
     form = `<label>行 ${pickSel('pk-r', grp, P.table.r)}</label><label>列 ${pickSel('pk-c', grp, P.table.c)}</label>`;
     note = '2 つのカテゴリの列から、人数のクロス表を作ります。';
@@ -85,13 +89,14 @@ function pickApply() {
     state.indep = { cols: lv.map(L => ({ name: String(L), on: true })), rows: Array.from({ length: n }, (_, i) => by.map(b => b[i] ?? '')) };
     ok(`${src}「${P.indep.y}」を「${P.indep.g}」で分けて並べました（${lv.map((L, k) => `${L} ${by[k].length} 人`).join('、')}）。解析パネルのボタンで、そのまま解析できます。`);
   } else if (state.fmt === 'paired' || state.fmt === 'bivar') {
-    const names = state.fmt === 'paired' ? state.db.cols.map(c => c.name).filter(nm => P.paired.cols.includes(nm)) : [P.bivar.x, P.bivar.y, ...state.db.cols.map(c => c.name).filter(nm => (P.bivar.more || []).includes(nm) && nm !== P.bivar.x && nm !== P.bivar.y)];
+    const names = state.fmt === 'paired' ? P.paired.cols.slice() : (P.bivar.list || [P.bivar.x, P.bivar.y]).slice();
     const js = names.map(J);
-    if (js.length < 2 || js.some(j => j < 0)) return say(state.fmt === 'paired' ? '条件・時点の列を 2 つ以上選んでください。' : 'X と Y の列を選んでください。');
-    if (new Set(js).size !== js.length) return say('X と Y には、別の列を選んでください。');
+    if (js.length < 2 || js.some(j => j < 0)) return say(state.fmt === 'paired' ? '条件・時点の列を、右の箱に 2 つ以上入れてください。' : '並べる列を、右の箱に 2 つ以上入れてください。');
+    if (new Set(js).size !== js.length) return say('同じ列が 2 回入っています。');
     const cols = js.map(rawCol), rows = state.db.rows.map((_, i) => cols.map(c => c[i])).filter(r => r.some(v => v !== ''));
     const full = rows.filter(r => r.every(v => v !== '' && isFinite(toNum(v)))).length;
     state[state.fmt] = { cols: names.map(nm => ({ name: nm, on: true })), rows: rows.length ? rows : [names.map(() => '')] };
+    if (state.fmt === 'bivar') state.opt.cor = null; // 相関の箱は、並べた列で決め直す
     ok(`${src}${names.map(nm => `「${nm}」`).join('・')}を並べました（${rows.length} 人、すべてそろっている人 ${full} 人）。${state.fmt === 'paired' ? '空欄のある人は、解析のときに除かれます。' : ''}解析パネルのボタンで、そのまま解析できます。`);
   } else {
     const r = J(P.table.r), c = J(P.table.c); if (r < 0 || c < 0) return say('行と列にする変数を選んでください。');
