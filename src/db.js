@@ -143,7 +143,7 @@ function confirmReplace(file) {
   const has = state.db.rows.some(r => r.some(v => String(v ?? '').trim() !== ''));
   if (!has) return Promise.resolve(true);
   return new Promise(res => {
-    const box = importNotice(`<b>「${esc(file.name)}」を読み込みますか？</b><div style="margin-top:4px">今のデータシートの内容は、このファイルの内容に置き換わります（元のデータが必要なら、先に Excel などにコピーしておいてください）。</div><div class="sheettools" style="margin-top:8px"><button class="btn primary" data-ia="ok">読み込む</button><button class="btn" data-ia="no">やめる</button></div>`);
+    const box = importNotice(`<b>「${esc(file.name)}」を読み込みますか？</b><div style="margin-top:4px">${state.fmt === 'db' ? '今のデータシートの内容' : 'データベース型タブのデータ（どのタブでも使う、読み込んだデータ）'}は、このファイルの内容に置き換わります（元のデータが必要なら、先に Excel などにコピーしておいてください）。</div><div class="sheettools" style="margin-top:8px"><button class="btn primary" data-ia="ok">読み込む</button><button class="btn" data-ia="no">やめる</button></div>`);
     box.addEventListener('click', e => { const b = e.target.closest('[data-ia]'); if (!b) return; box.remove(); if (b.dataset.ia === 'no') $('#msg').textContent = '読み込みをやめました。'; res(b.dataset.ia === 'ok'); });
     $('#msg').textContent = `「${file.name}」：データシートの上の「読み込む」を押すと読み込みます。`;
   });
@@ -166,18 +166,19 @@ $('#sheetBody').addEventListener('click', e => { const b = e.target.closest('[da
 function setDb(cols, rows) {
   const firstNum = cols.findIndex((c, j) => c.measure !== 'nominal' && rows.some(row => row[j] !== '' && isFinite(toNum(row[j]))));
   state.db = { cols, rows: rows.length ? rows : [cols.map(() => '')], roles: { y: Math.max(0, firstNum), a: -1, b: -1, x: [], rep: [], fa: [], bin: -1, event: '', roc: [], cov: [], time: -1, st: -1, stev: '' }, semModel: emptySemModel() };
+  if (state.opt.pick) delete state.opt.pick; // 列の選び方（他のタブ）は、新しいデータで決め直す
   vvOpen = -1; save(); let stored = true; try { localStorage.setItem('statlab-v1', JSON.stringify(state)); } catch (e) { stored = false; } return stored;
 }
 function loadTable(sheet, fname) {
-  const T = rowsToDb(sheet.rows); state.opt.dbView = 'data'; const stored = setDb(T.cols, T.rows); renderSheet(); renderPanel();
+  const T = rowsToDb(sheet.rows); state.opt.dbView = 'data'; const stored = setDb(T.cols, T.rows); state.db.file = fname; save(); renderSheet(); renderPanel();
   const nCat = T.cols.filter((_, j) => colType(j) === 'cat').length;
-  $('#msg').textContent = `「${fname}」${sheet.name !== 'CSV' ? `の「${sheet.name}」シート` : ''}を読み込みました：${T.rows.length}行 × ${T.cols.length}変数${T.header ? '（1行目を変数名として使いました）' : '（1行目が数値だったので、変数名は「変数1…」としました）'}。数値の列 ${T.cols.length - nCat}・文字の列 ${nCat}。変数ビューでラベルや値ラベルを付けられます。${stored ? '' : 'データが大きいため、ブラウザを閉じると消えます。元のファイルは残しておいてください。'}`;
+  $('#msg').textContent = `「${fname}」${sheet.name !== 'CSV' ? `の「${sheet.name}」シート` : ''}を読み込みました：${T.rows.length}行 × ${T.cols.length}変数${T.header ? '（1行目を変数名として使いました）' : '（1行目が数値だったので、変数名は「変数1…」としました）'}。数値の列 ${T.cols.length - nCat}・文字の列 ${nCat}。${state.fmt === 'db' ? '変数ビューでラベルや値ラベルを付けられます。' : 'データシートの上で使う列を選び、「データシートに並べる」を押してください。'}${stored ? '' : 'データが大きいため、ブラウザを閉じると消えます。元のファイルは残しておいてください。'}`;
 }
 async function importSav(file) {
   if (!(await confirmReplace(file))) return;
   try {
     const r = await readSav(await file.arrayBuffer()); if (!r.cols.length) throw new Error('変数が1つもありません。');
-    state.opt.dbView = 'var'; const stored = setDb(r.cols, r.rows); renderSheet(); renderPanel();
+    state.opt.dbView = state.fmt === 'db' ? 'var' : state.opt.dbView; const stored = setDb(r.cols, r.rows); state.db.file = file.name; save(); renderSheet(); renderPanel();
     const nl = r.cols.filter(c => c.label).length, nv = r.cols.filter(c => c.values.length).length, nm = r.cols.filter(c => c.missing).length;
     $('#msg').textContent = `「${file.name}」を読み込みました：${r.nCases}人 × ${r.cols.length}変数（ラベル ${nl}・値ラベル ${nv}・欠損値の指定 ${nm} 変数、文字コード ${r.encoding}、${r.compression}）。${stored ? '' : 'データが大きいため、ブラウザを閉じると消えます。元の .sav ファイルは残しておいてください。'}`;
   } catch (err) { importError(err.message); }

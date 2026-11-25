@@ -180,6 +180,10 @@ table.vview td { vertical-align: middle; } table.vview input.vlab { width: 240px
 table.vview input.vmiss { width: 70px; border: 0; background: transparent; color: var(--fg); font: inherit; padding: 4px 6px; }
 table.vview select { font: inherit; font-family: var(--f-ui); font-size: 12px; border: 0; background: transparent; color: var(--fg); padding: 3px; }
 table.vview td.vsum { font-family: var(--f-ui); font-size: 12px; padding: 2px 6px; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } table.vview td.vsum .btn { padding: 1px 8px; font-size: 11.5px; }
+details.pickbox { margin: 0 0 10px; padding: 6px 10px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; background: var(--panel); font-family: var(--f-ui); font-size: 12.5px; }
+details.pickbox summary { cursor: pointer; } details.pickbox summary .hint { margin-left: 6px; } details.pickbox .sheettools { margin-top: 6px; }
+.pkinfo { margin: 6px 0 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .pkform { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 6px 0 2px; }
+.pkform select { font: inherit; border: 1px solid var(--line); border-radius: 3px; background: var(--sheet); color: var(--fg); padding: 2px 4px; margin-left: 4px; max-width: 220px; } .pkchecks { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; } .pkchecks input { accent-color: var(--accent); }
 .vvbox { padding: 8px 6px; font-family: var(--f-ui); font-size: 12.5px; } .vvbox table.out input { border: 1px solid var(--line); border-radius: 3px; background: var(--sheet); color: var(--fg); font: inherit; padding: 2px 6px; } .vvbox input.vcode { width: 70px; } .vvbox input.vlab { width: 220px; }
 .interp { margin: 10px 0 14px; padding: 9px 12px 9px 14px; border-left: 3px solid var(--g3); background: var(--panel); border-radius: 0 4px 4px 0; font-size: 12.8px; line-height: 1.75; }
 .interp > b { display: block; color: var(--g3); font-size: 12px; margin-bottom: 2px; } .interp p { margin: 2px 0; }
@@ -400,7 +404,7 @@ function renderSheet() {
   const d = state[state.fmt];
   const head = '<tr><th class="rn">#</th>' + d.cols.map((c, j) => `<th><div class="colhd"><input type="checkbox" id="on-${j}" data-on="${j}" ${c.on ? 'checked' : ''} title="解析に使う"><input class="name" id="nm-${j}" data-nm="${j}" value="${esc(c.name)}"></div></th>`).join('') + '</tr>';
   const body = d.rows.map((r, i) => `<tr><td class="rn">${i + 1}</td>` + d.cols.map((_, j) => { const v = r[j] ?? ''; const bad = v.trim() !== '' && isNaN(toNum(v)); return `<td><input class="cell${bad ? ' bad' : ''}" id="c-${i}-${j}" data-r="${i}" data-c="${j}" value="${esc(v)}" inputmode="decimal"></td>`; }).join('') + '</tr>').join('');
-  $('#sheetBody').innerHTML = `<p class="hint" style="margin-bottom:8px">${f.desc} 列見出しのチェックを外すと、その列は解析に使いません。</p>
+  $('#sheetBody').innerHTML = (typeof pickBox === 'function' ? pickBox() : '') + `<p class="hint" style="margin-bottom:8px">${f.desc} 列見出しのチェックを外すと、その列は解析に使いません。</p>
     <div class="sheetwrap"><table class="sheet" id="grid"><thead>${head}</thead><tbody>${body}</tbody></table></div>
     <div class="sheettools">
       <button class="btn" data-act="addrow">行を追加</button><button class="btn" data-act="addcol">列を追加</button>
@@ -415,7 +419,7 @@ function renderTableSheet(f) {
   const cs = t.colNames.map((_, j) => t.cells.reduce((s, r) => s + (toNum(r[j]) || 0), 0));
   const body = t.cells.map((r, i) => `<tr><td class="rn" style="padding:0"><input class="name rname" id="tr-${i}" data-tr="${i}" value="${esc(t.rowNames[i])}"></td>` + r.map((v, j) => `<td><input class="cell" id="tt-${i}-${j}" data-ti="${i}" data-tj="${j}" value="${esc(v)}" inputmode="numeric"></td>`).join('') + `<td class="total">${r.reduce((s, v) => s + (toNum(v) || 0), 0)}</td></tr>`).join('')
     + `<tr><td class="rn">計</td>${cs.map(v => `<td class="total">${v}</td>`).join('')}<td class="total">${cs.reduce((a, b) => a + b, 0)}</td></tr>`;
-  $('#sheetBody').innerHTML = `<p class="hint" style="margin-bottom:8px">${f.desc}</p>
+  $('#sheetBody').innerHTML = (typeof pickBox === 'function' ? pickBox() : '') + `<p class="hint" style="margin-bottom:8px">${f.desc}</p>
     <div class="sheetwrap"><table class="sheet" id="grid"><thead>${head}</thead><tbody>${body}</tbody></table></div>
     <div class="sheettools"><button class="btn" data-act="taddrow">行を追加</button><button class="btn" data-act="taddcol">列を追加</button>
     <button class="btn" data-act="tdelrow">最終行を削除</button><button class="btn" data-act="tdelcol">右端の列を削除</button><button class="btn" data-act="tsample">例のデータに戻す</button></div>`;
