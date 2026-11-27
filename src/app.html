@@ -169,6 +169,10 @@ details.cutlist .tw { max-height: 320px; overflow: auto; }
 .semside { border-left: 1px solid var(--line); padding: 10px 12px; overflow: auto; background: var(--panel); font-size: 12.5px; }
 .semside h5 { margin: 10px 0 6px; font-size: 13px; }
 .semvars { display: flex; flex-wrap: wrap; gap: 4px; }
+.semsize label { display: grid; grid-template-columns: 7.5em 1fr 3em; align-items: center; gap: 6px; margin: 4px 0; }
+.semsize input[type=range] { width: 100%; accent-color: var(--accent); }
+.semsize output { font-family: var(--f-num); font-size: 12px; text-align: right; }
+.semsize .btn { margin-top: 4px; }
 .semvars .chip[disabled] { opacity: .4; cursor: default; }
 .semside textarea { width: 100%; font-family: var(--f-num); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--fg); padding: 6px; }
 table.semfit td { padding: 2px 6px; white-space: normal; }
