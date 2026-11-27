@@ -173,6 +173,23 @@ details.cutlist .tw { max-height: 320px; overflow: auto; }
 .semsize input[type=range] { width: 100%; accent-color: var(--accent); }
 .semsize output { font-family: var(--f-num); font-size: 12px; text-align: right; }
 .semsize .btn { margin-top: 4px; }
+.pardlg { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.pardlg[hidden] { display: none; }
+.parbox { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; width: min(860px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.25); font-size: 13px; }
+.parhead, .parfoot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.parfoot { border-bottom: 0; border-top: 1px solid var(--line); }
+.parscroll { overflow: auto; padding: 10px 14px; }
+.parcard { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 10px 0; background: var(--sheet); }
+.parhd { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.parfit { margin: 6px 0 2px; font-family: var(--f-num); font-size: 12px; }
+.parwarn { margin: 4px 0; padding: 4px 8px; border-left: 3px solid var(--sig); background: color-mix(in srgb, var(--sig) 8%, transparent); font-size: 12px; }
+.parnote { padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--accent-soft); margin-bottom: 8px; }
+.partbl { overflow-x: auto; } .partbl table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+.partbl th, .partbl td { padding: 3px 10px; border-bottom: 1px solid var(--line); text-align: left; } .partbl .c { text-align: center; }
+.partbl .parsum td { font-size: 11.5px; color: var(--muted); border-bottom: 0; }
+.parprog { display: flex; gap: 8px; align-items: center; margin-top: 8px; } .parprog progress { flex: 1; }
+.parres table { font-size: 12px; }
+.semsize label.semchk { display: flex; gap: 6px; grid-template-columns: none; }
 .semvars .chip[disabled] { opacity: .4; cursor: default; }
 .semside textarea { width: 100%; font-family: var(--f-num); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--fg); padding: 6px; }
 table.semfit td { padding: 2px 6px; white-space: normal; }

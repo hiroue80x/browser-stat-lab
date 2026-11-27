@@ -177,6 +177,23 @@ details.cutlist .tw { max-height: 320px; overflow: auto; }
 .semsize input[type=range] { width: 100%; accent-color: var(--accent); }
 .semsize output { font-family: var(--f-num); font-size: 12px; text-align: right; }
 .semsize .btn { margin-top: 4px; }
+.pardlg { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.pardlg[hidden] { display: none; }
+.parbox { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; width: min(860px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.25); font-size: 13px; }
+.parhead, .parfoot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.parfoot { border-bottom: 0; border-top: 1px solid var(--line); }
+.parscroll { overflow: auto; padding: 10px 14px; }
+.parcard { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 10px 0; background: var(--sheet); }
+.parhd { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.parfit { margin: 6px 0 2px; font-family: var(--f-num); font-size: 12px; }
+.parwarn { margin: 4px 0; padding: 4px 8px; border-left: 3px solid var(--sig); background: color-mix(in srgb, var(--sig) 8%, transparent); font-size: 12px; }
+.parnote { padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--accent-soft); margin-bottom: 8px; }
+.partbl { overflow-x: auto; } .partbl table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+.partbl th, .partbl td { padding: 3px 10px; border-bottom: 1px solid var(--line); text-align: left; } .partbl .c { text-align: center; }
+.partbl .parsum td { font-size: 11.5px; color: var(--muted); border-bottom: 0; }
+.parprog { display: flex; gap: 8px; align-items: center; margin-top: 8px; } .parprog progress { flex: 1; }
+.parres table { font-size: 12px; }
+.semsize label.semchk { display: flex; gap: 6px; grid-template-columns: none; }
 .semvars .chip[disabled] { opacity: .4; cursor: default; }
 .semside textarea { width: 100%; font-family: var(--f-num); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--sheet); color: var(--fg); padding: 6px; }
 table.semfit td { padding: 2px 6px; white-space: normal; }
@@ -3713,17 +3730,20 @@ state.opt.semStd = state.opt.semStd ?? true; state.opt.semBoot = state.opt.semBo
 // ----- 文字の幅・図形 -----
 const tw = s => [...String(s)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 13 : 7.2), 0);
 // 図形の大きさ：全体の倍率（モデルの latK / obsK）と、変数ごとに手で変えた大きさ（n.rx, n.ry / n.w, n.h）
-let semK = { lat: 1, obs: 1 };
-const semSetK = m => { semK = { lat: +(m && m.latK) || 1, obs: +(m && m.obsK) || 1 }; };
+// 文字：全体の倍率 fontK。fontFollow（既定 true）のときは、図形の高さに合わせて変数名の文字も大きくする
+let semK = { lat: 1, obs: 1, font: 1, follow: true };
+const semSetK = m => { semK = { lat: +(m && m.latK) || 1, obs: +(m && m.obsK) || 1, font: +(m && m.fontK) || 1, follow: !(m && m.fontFollow === false) }; };
+const semFs = n => n.kind === 'lat' ? semK.font * (semK.follow ? (n.ry ? n.ry / 25 : semK.lat) : 1) : semK.font * (semK.follow ? (n.h ? n.h / 30 : semK.obs) : 1); // 変数名の文字の倍率
 const nodeSize = n => {
-  if (n.kind === 'lat') return n.rx ? { rx: n.rx, ry: n.ry } : { rx: Math.round(Math.max(40, tw(n.name) / 2 + 18) * semK.lat), ry: Math.round(25 * semK.lat) };
-  return n.w ? { w: n.w, h: n.h } : { w: Math.round(Math.max(62, tw(n.name) + 20) * semK.obs), h: Math.round(30 * semK.obs) };
+  const f = semFs(n);
+  if (n.kind === 'lat') return n.rx ? { rx: n.rx, ry: n.ry } : { rx: Math.round(Math.max(40 * semK.lat, tw(n.name) * f / 2 + 18 * semK.lat)), ry: Math.round(Math.max(25 * semK.lat, 12.5 * f / 2 + 9)) };
+  return n.w ? { w: n.w, h: n.h } : { w: Math.round(Math.max(62 * semK.obs, tw(n.name) * f + 20 * semK.obs)), h: Math.round(Math.max(30 * semK.obs, 12.5 * f + 12)) };
 };
-const semKeepLook = (from, to) => { ['latK', 'obsK'].forEach(k => { if (from[k]) to[k] = from[k]; }); return to; };
+const semKeepLook = (from, to) => { ['latK', 'obsK', 'fontK', 'fontFollow'].forEach(k => { if (from[k] != null) to[k] = from[k]; }); return to; };
 function boundary(n, dx, dy) { // 中心から (dx, dy) 方向に進んだときの縁の点
   const L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, z = nodeSize(n);
   if (n.kind === 'lat') { const t = 1 / Math.sqrt((ux / z.rx) ** 2 + (uy / z.ry) ** 2); return [n.x + ux * t, n.y + uy * t]; }
-  if (n.kind === 'err') return [n.x + ux * 12, n.y + uy * 12];
+  if (n.kind === 'err') { const r = 12 * Math.max(1, semK.font * .9); return [n.x + ux * r, n.y + uy * r]; }
   const t = Math.min(Math.abs(ux) > 1e-9 ? z.w / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-9 ? z.h / 2 / Math.abs(uy) : Infinity); return [n.x + ux * t, n.y + uy * t];
 }
 
@@ -3759,21 +3779,21 @@ function semFromSpec(spec) { // 自動配置
   semAutoLayout(m); return m;
 }
 function semAutoLayout(m) {
-  semSetK(m);
+  semSetK(m); const fsO = semK.font * (semK.follow ? semK.obs : 1), vs = Math.max(52, 30 * semK.obs + 12 + 12 * semK.font), hs = 112 * Math.max(1, semK.obs, fsO), gx = Math.max(1, semK.lat, (semK.obs + fsO) / 2), gO = vs / 52, gL = Math.max(1, semK.lat); // 図形・文字が大きいときは間隔を広げる
   const isInd = n => n.kind === 'obs' && m.edges.some(e => e.type === 'path' && e.to === n.id && m.nodes.find(x => x.id === e.from).kind === 'lat') && !m.edges.some(e => e.type === 'path' && e.from === n.id);
   const struct = m.nodes.filter(n => !isInd(n)), depth = {}; struct.forEach(n => depth[n.id] = 0);
   for (let k = 0; k < struct.length; k++) m.edges.filter(e => e.type === 'path' && depth[e.from] != null && depth[e.to] != null).forEach(e => depth[e.to] = Math.max(depth[e.to], Math.min(depth[e.from] + 1, struct.length)));
   const maxD = Math.max(0, ...Object.values(depth)), ind = l => m.nodes.filter(n => isInd(n) && m.edges.find(e => e.type === 'path' && e.to === n.id).from === l.id);
-  const side = n => depth[n.id] === 0 ? 'L' : depth[n.id] === maxD ? 'R' : 'B', colX = d => 260 + d * 300, cols = [];
+  const side = n => depth[n.id] === 0 ? 'L' : depth[n.id] === maxD ? 'R' : 'B', colX = d => 260 * gx + d * 300 * gx, cols = [];
   for (let d = 0; d <= maxD; d++) {
     const ns = struct.filter(n => depth[n.id] === d); let y = 0;
-    ns.forEach(n => { const k = ind(n).length, sd = side(n), h = sd === 'B' ? 190 : Math.max(70, k * 52); n.x = colX(d); n.y = y + (sd === 'B' ? 30 : h / 2) - (sd === 'B' && d > 0 && d < maxD ? 150 : 0); n._h = h; y += h + 36; });
+    ns.forEach(n => { const k = ind(n).length, sd = side(n), h = sd === 'B' ? 190 * gO : Math.max(70 * gL, k * 52 * gO); n.x = colX(d); n.y = y + (sd === 'B' ? 30 : h / 2) - (sd === 'B' && d > 0 && d < maxD ? 150 * gO : 0); n._h = h; y += h + 36; });
     cols.push({ ns, h: y - 36 });
   }
   const H = Math.max(...cols.map(c => c.h), 0), sd0 = side;
   cols.forEach(c => c.ns.forEach(n => {
     n.y += (H - c.h) / 2 + 60 + (sd0(n) === 'B' ? 40 : 0); const k = ind(n), sd = side(n);
-    k.forEach((o, i) => { if (sd === 'B') { o.x = n.x + (i - (k.length - 1) / 2) * 112; o.y = n.y - 105; } else { o.x = n.x + (sd === 'L' ? -160 : 160); o.y = n.y + (i - (k.length - 1) / 2) * 52; } });
+    k.forEach((o, i) => { if (sd === 'B') { o.x = n.x + (i - (k.length - 1) / 2) * hs; o.y = n.y - 105 * Math.max(gO, gL); } else { o.x = n.x + (sd === 'L' ? -160 : 160) * gx; o.y = n.y + (i - (k.length - 1) / 2) * vs; } });
     delete n._h;
   }));
   const minX = Math.min(...m.nodes.map(n => n.x - (nodeSize(n).w || nodeSize(n).rx * 2) / 2)), minY = Math.min(...m.nodes.map(n => n.y));
@@ -3823,36 +3843,37 @@ function semSvg(m, o = {}) { // o: { fit, std, interactive, sel, pending, fitBox
   // 誤差
   errs.forEach(er => {
     const n = m.nodes.find(x => x.id === er.of), p = boundary(er, n.x - er.x, n.y - er.y), q = boundary(n, er.x - n.x, er.y - n.y);
-    body += `<path d="M${p[0].toFixed(1)},${p[1].toFixed(1)} L${q[0].toFixed(1)},${q[1].toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#am${u})"/><circle cx="${er.x}" cy="${er.y}" r="12" fill="var(--sheet)" stroke="var(--muted)"/><text x="${er.x}" y="${er.y + 4}" text-anchor="middle" style="font-size:10px">${er.name}</text>`;
+    body += `<path d="M${p[0].toFixed(1)},${p[1].toFixed(1)} L${q[0].toFixed(1)},${q[1].toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#am${u})"/><circle cx="${er.x}" cy="${er.y}" r="${12 * Math.max(1, semK.font * .9)}" fill="var(--sheet)" stroke="var(--muted)"/><text x="${er.x}" y="${er.y + 3.6 * semK.font}" text-anchor="middle" style="font-size:${10 * semK.font}px">${er.name}</text>`;
   });
   // 矢印・共分散
   [...semAutoCov(m), ...m.edges].forEach(e => {
     const g = semEdgeGeom(m, e, nodes, cent), A = nameOf(e.from), B = nameOf(e.to), es = F ? estOf(e.type === 'path' ? 'A' : 'S', A, B) : null;
     const sig = !es || !isFinite(es.p) || es.p < .05, sel = o.sel === e.id, col = sel ? 'var(--sig)' : F ? (sig ? 'var(--accent)' : 'var(--muted)') : 'var(--fg)', mk = sel ? 'as' : F ? (sig ? 'aa' : 'am') : 'af';
-    if (e.auto && !F) { body += `<path d="${g.d}" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#am${u})" marker-start="url(#am${u})"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4).toFixed(1)}" text-anchor="middle" style="font-size:10px;fill:var(--muted)">自動</text>`; return; }
+    if (e.auto && !F) { body += `<path d="${g.d}" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#am${u})" marker-start="url(#am${u})"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 3.6 * semK.font).toFixed(1)}" text-anchor="middle" style="font-size:${10 * semK.font}px;fill:var(--muted)">自動</text>`; return; }
     if (o.interactive && !e.auto) body += `<path d="${g.d}" stroke="transparent" stroke-width="14" fill="none" data-edge="${e.id}" style="cursor:pointer"/>`;
     body += `<path d="${g.d}" fill="none" stroke="${col}" stroke-width="${sel ? 2.6 : F && sig ? 1.9 : 1.4}" ${F && !sig ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#${mk}${u})" ${e.type === 'cov' ? `marker-start="url(#${mk}${u})"` : ''} ${o.interactive && !e.auto ? `data-edge="${e.id}" style="cursor:pointer"` : ''}/>`;
     let lab = '';
     if (es) lab = o.std ? c2(es.std) : (es.free ? c2(es.est) : String(+es.est.toFixed(3)));
     else if (e.fix != null) lab = String(e.fix); else if (markers.has(e.id)) lab = '1';
-    if (lab) body += `<rect x="${(g.lx - tw(lab) / 2 - 4).toFixed(1)}" y="${(g.ly - 9).toFixed(1)}" width="${(tw(lab) + 8).toFixed(1)}" height="16" rx="3" fill="var(--sheet)" fill-opacity=".92"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4).toFixed(1)}" text-anchor="middle" style="fill:${F && !sig ? 'var(--muted)' : 'var(--fg)'};font-size:11.5px">${lab}${es && isFinite(es.p) && es.p < .05 ? `<tspan style="fill:var(--sig)">${star(es.p)}</tspan>` : ''}</text>`;
+    const fk = semK.font, lw = (tw(lab) + (es && isFinite(es.p) && es.p < .05 ? tw(star(es.p)) : 0)) * .92 * fk;
+    if (lab) body += `<rect x="${(g.lx - lw / 2 - 4).toFixed(1)}" y="${(g.ly - 9 * fk).toFixed(1)}" width="${(lw + 8).toFixed(1)}" height="${(16 * fk).toFixed(1)}" rx="3" fill="var(--sheet)" fill-opacity=".92"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4 * fk).toFixed(1)}" text-anchor="middle" style="fill:${F && !sig ? 'var(--muted)' : 'var(--fg)'};font-size:${(11.5 * fk).toFixed(2)}px">${lab}${es && isFinite(es.p) && es.p < .05 ? `<tspan style="fill:var(--sig)">${star(es.p)}</tspan>` : ''}</text>`;
   });
   // 変数
   m.nodes.forEach(n => {
     const z = nodeSize(n), sel = o.sel === n.id || o.pending === n.id, st = sel ? 'var(--sig)' : 'var(--fg)', at = o.interactive ? `data-node="${n.id}" style="cursor:${o.tool === 'select' ? 'move' : 'pointer'}"` : '';
     body += n.kind === 'lat' ? `<ellipse cx="${n.x}" cy="${n.y}" rx="${z.rx}" ry="${z.ry}" fill="var(--accent-soft)" stroke="${st}" stroke-width="${sel ? 2.6 : 1.5}" ${at}/>` : `<rect x="${n.x - z.w / 2}" y="${n.y - z.h / 2}" width="${z.w}" height="${z.h}" rx="2" fill="var(--sheet)" stroke="${st}" stroke-width="${sel ? 2.6 : 1.4}" ${at}/>`;
-    body += `<text x="${n.x}" y="${n.y + 4.5}" text-anchor="middle" style="fill:var(--fg);font-size:12.5px;pointer-events:none">${esc(n.name)}</text>`;
+    const fs = 12.5 * semFs(n); body += `<text x="${n.x}" y="${(n.y + fs * .36).toFixed(1)}" text-anchor="middle" style="fill:var(--fg);font-size:${fs.toFixed(2)}px;pointer-events:none">${esc(n.name)}</text>`;
     if (o.interactive && o.tool === 'select' && o.sel === n.id) { const hx = n.x + (n.kind === 'lat' ? z.rx * .7071 : z.w / 2), hy = n.y + (n.kind === 'lat' ? z.ry * .7071 : z.h / 2); body += `<rect x="${(hx - 5).toFixed(1)}" y="${(hy - 5).toFixed(1)}" width="10" height="10" rx="1.5" fill="var(--sheet)" stroke="var(--sig)" stroke-width="1.6" data-resize="${n.id}" style="cursor:nwse-resize"><title>ドラッグで大きさを変える（ダブルクリックで元に戻す）</title></rect>`; }
     const r2 = F && F.r2.find(r => r.name === n.name);
     if (r2) {
       const dirs = [...m.edges.filter(e => e.from === n.id || e.to === n.id).map(e => nodes.find(x => x.id === (e.from === n.id ? e.to : e.from))), errs.find(er => er.of === n.id)].filter(Boolean).map(o => { const L = Math.hypot(o.x - n.x, o.y - n.y) || 1; return [(o.x - n.x) / L, (o.y - n.y) / L]; });
-      const hw = n.kind === 'lat' ? z.rx : z.w / 2, hh = n.kind === 'lat' ? z.ry : z.h / 2, cand = [[0, -1, 0, -hh - 5, 'middle'], [0, 1, 0, hh + 13, 'middle'], [1, 0, hw + 4, 4, 'start'], [-1, 0, -hw - 4, 4, 'end'], [.7, -.7, hw * .75, -hh - 4, 'middle'], [-.7, -.7, -hw * .75, -hh - 4, 'middle']];
+      const fk = semK.font, hw = n.kind === 'lat' ? z.rx : z.w / 2, hh = n.kind === 'lat' ? z.ry : z.h / 2, cand = [[0, -1, 0, -hh - 5, 'middle'], [0, 1, 0, hh + 13 * fk, 'middle'], [1, 0, hw + 4, 4 * fk, 'start'], [-1, 0, -hw - 4, 4 * fk, 'end'], [.7, -.7, hw * .75, -hh - 4, 'middle'], [-.7, -.7, -hw * .75, -hh - 4, 'middle']];
       const best = cand.map((c, i) => [c, Math.round(Math.max(-1, ...dirs.map(d => d[0] * c[0] + d[1] * c[1])) * 3) / 3, i]).sort((a, b) => a[1] - b[1] || a[2] - b[2])[0][0];
-      body += `<text x="${n.x + best[2]}" y="${n.y + best[3]}" text-anchor="${best[4]}" style="fill:var(--sig);font-size:10.5px">R²=${c2(r2.r2)}</text>`;
+      body += `<text x="${n.x + best[2]}" y="${n.y + best[3]}" text-anchor="${best[4]}" style="fill:var(--sig);font-size:${(10.5 * fk).toFixed(2)}px">R²=${c2(r2.r2)}</text>`;
     }
   });
   // 範囲
-  const xs = nodes.flatMap(n => { const z = nodeSize(n); return n.kind === 'err' ? [n.x - 14, n.x + 14] : n.kind === 'lat' ? [n.x - z.rx, n.x + z.rx] : [n.x - z.w / 2, n.x + z.w / 2]; }), ys = nodes.flatMap(n => [n.y - 34, n.y + 34]);
+  const xs = nodes.flatMap(n => { const z = nodeSize(n); return n.kind === 'err' ? [n.x - 14, n.x + 14] : n.kind === 'lat' ? [n.x - z.rx, n.x + z.rx] : [n.x - z.w / 2, n.x + z.w / 2]; }), ys = nodes.flatMap(n => { const z = nodeSize(n), hh = n.kind === 'err' ? 14 : n.kind === 'lat' ? z.ry : z.h / 2; return [n.y - Math.max(34, hh + 18 * semK.font), n.y + Math.max(34, hh + 18 * semK.font)]; });
   [...semAutoCov(m), ...m.edges].filter(e => e.type === 'cov').forEach(e => { const g = semEdgeGeom(m, e, nodes, cent); xs.push(g.lx - 20, g.lx + 20); ys.push(g.ly - 14, g.ly + 14); });
   let x0 = Math.min(...xs, 0) - 20, x1 = Math.max(...xs, 300) + 20, y0 = Math.min(...ys, 0) - 10, y1 = Math.max(...ys, 200) + 10;
   if (o.canvas) { x0 = Math.min(x0, 0); y0 = Math.min(y0, 0); x1 = Math.max(x1, o.canvas[0]); y1 = Math.max(y1, o.canvas[1]); }
@@ -3882,6 +3903,7 @@ function semRun(m) {
 function semReport(m, F, BT) {
   const std = state.opt.semStd, v = semFitVerdict(F), J = { good: '○ 良好', fair: '△ 許容', poor: '× 不十分' };
   let h = `<p class="note">最尤法・N = ${F.N}${F.dropped > 0 ? `（欠測のある ${F.dropped}人を除外）` : ''}・推定するパラメータ ${F.nparRep}個・自由度 ${F.df}。${F.conv ? '' : '<b>推定が収束しませんでした。</b>'}${F.heywood.length ? `<b>${F.heywood.map(esc).join('・')}の分散が負です（不適解）。</b>` : ''}</p>`;
+  if (m.parcels && Object.keys(m.parcels).length) h += `<p class="note">指標にパーセル（項目の平均）を使っています：${Object.entries(m.parcels).map(([l, P]) => `${esc(l)}（${P.groups.map((g, p) => `${esc(parName(l, p))} = ${g.map(esc).join('・')}`).join('、')}）`).join('；')}。</p>`;
   h += '<h4>パス図</h4>' + `<div class="semfig">${semSvg(m, { fit: F, std, fitBox: true })}</div><p class="note">図が小さいときは横にスクロールするか、「画像で表示」で拡大できます。</p>`;
   if (F.df === 0) h += '<h4>適合度指標</h4><p class="note">自由度が 0 の飽和モデル（すべての共分散を説明しきるモデル）のため、χ² は 0 で、適合度指標は意味をもちません。係数の推定値と検定だけを解釈してください。</p>';
   else h += '<h4>適合度指標</h4>' + table(['指標', '値', '判定', '目安'], [
@@ -3968,7 +3990,7 @@ function renderSemEditor(full) {
       <label class="hint"><input type="checkbox" id="seStd" ${state.opt.semStd ? 'checked' : ''}> 標準化推定値</label>
       <label class="hint"><input type="checkbox" id="seAuto" ${m.autoCov ? 'checked' : ''}> 外生変数どうしの共分散を自動で仮定</label>
       <label class="hint">ブートストラップ <select id="seBoot">${['0', '500', '1000', '2000', '5000'].map(v => `<option value="${v}" ${state.opt.semBoot === v ? 'selected' : ''}>${v === '0' ? 'なし' : v + ' 回'}</option>`).join('')}</select></label>
-      <button class="btn" data-se="undo">元に戻す</button><button class="btn" data-se="layout">自動で並べる</button><button class="btn" data-se="text">テキストで書く</button><button class="btn" data-se="clear">全消去</button>
+      <button class="btn" data-se="undo">元に戻す</button><button class="btn" data-se="layout">自動で並べる</button><button class="btn" data-se="text">テキストで書く</button><button class="btn" data-se="parcel">アイテム・パーセリング</button><button class="btn" data-se="clear">全消去</button>
       <button class="btn primary" data-se="run">推定する</button><button class="btn" data-se="close">閉じる</button></div>
       <div class="sembody"><div class="semtools">${TOOLS.map(([id, l, d]) => `<button class="btn" data-tool="${id}" title="${l}" aria-pressed="${SE.tool === id}"><svg viewBox="0 0 20 20" width="20" height="20">${d === 'ellipse' ? '<ellipse cx="10" cy="10" rx="8" ry="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/>' : `<path d="${d}" fill="${id === 'select' ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.6"/>`}</svg><span>${l}</span></button>`).join('')}</div>
       <div class="semcv" id="semCv"></div>
@@ -3977,13 +3999,16 @@ function renderSemEditor(full) {
       <h5>図形の大きさ</h5><div class="semsize">
         <label>潜在変数（楕円）<input type="range" id="seLatK" min="0.6" max="2" step="0.05" value="${m.latK || 1}"><output id="seLatKv">${Math.round((m.latK || 1) * 100)}%</output></label>
         <label>観測変数（四角）<input type="range" id="seObsK" min="0.6" max="2" step="0.05" value="${m.obsK || 1}"><output id="seObsKv">${Math.round((m.obsK || 1) * 100)}%</output></label>
-        <p class="hint">1 つだけ変えるときは、その変数を選んで右下の □ をドラッグします（□ をダブルクリックで元に戻す）。</p>
-        <button class="btn" data-se="sizereset">大きさをすべて元に戻す</button></div>
+        <label>文字<input type="range" id="seFontK" min="0.6" max="2.5" step="0.05" value="${m.fontK || 1}"><output id="seFontKv">${Math.round((m.fontK || 1) * 100)}%</output></label>
+        <label class="semchk"><input type="checkbox" id="seFontF" ${m.fontFollow === false ? '' : 'checked'}> 図形の大きさに合わせて文字も大きくする</label>
+        <p class="hint">1 つだけ変えるときは、その変数を選んで右下の □ をドラッグします（□ をダブルクリックで元に戻す）。「文字」は係数・R²・誤差の文字にも効きます。</p>
+        <button class="btn" data-se="sizereset">大きさ・文字をすべて元に戻す</button></div>
       <div id="semFit"></div><div id="semText" hidden><h5>モデルの書式（lavaan と同じ）</h5><textarea id="semTa" rows="9" spellcheck="false"></textarea><button class="btn" data-se="fromtext">テキストから図を作る</button><p class="hint">=~ 潜在変数の測定、~ 回帰（パス）、~~ 共分散。例：「抑うつ ~ ストレス」</p></div></aside></div>`;
   }
   $('#semCv').innerHTML = semSvg(m, { interactive: true, sel: SE.sel, pending: SE.pending, fit: SE.fit, std: state.opt.semStd, tool: SE.tool, canvas: [Math.max(700, ($('#semCv').clientWidth || 900) - 4), Math.max(460, ($('#semCv').clientHeight || 560) - 4)] });
   ov.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === SE.tool));
-  [['seLatK', m.latK], ['seObsK', m.obsK]].forEach(([id, v]) => { const el = $('#' + id); if (el && document.activeElement !== el) { el.value = v || 1; $('#' + id + 'v').textContent = Math.round((v || 1) * 100) + '%'; } });
+  { const f = $('#seFontF'); if (f) f.checked = m.fontFollow !== false; }
+  [['seLatK', m.latK], ['seObsK', m.obsK], ['seFontK', m.fontK]].forEach(([id, v]) => { const el = $('#' + id); if (el && document.activeElement !== el) { el.value = v || 1; $('#' + id + 'v').textContent = Math.round((v || 1) * 100) + '%'; } });
   const hint = { select: '変数をドラッグして動かす。選んだ変数の右下の □ で大きさを変える。ダブルクリックで名前（潜在変数）や固定値（矢印）を変更。Delete キーで削除。', lat: '図の空いているところをクリックすると潜在変数を置きます。', path: SE.pending ? '矢印の行き先をクリック' : '矢印の出発点（原因）をクリック', cov: SE.pending ? 'もう一方の変数をクリック' : '共分散を引く1つめの変数をクリック', del: '削除する変数・矢印をクリック' }[SE.tool];
   $('#semHint').textContent = hint;
   $('#semFit').innerHTML = SE.fit ? `<h5>適合度指標</h5><table class="out semfit">${semFitLines(SE.fit).map(([k, v]) => { const j = semFitVerdict(SE.fit)[k]; return `<tr><td>${k}</td><td style="color:${j === 'good' ? 'var(--accent)' : j === 'poor' ? 'var(--sig)' : 'var(--fg)'}">${esc(String(v))}${j === 'good' ? ' ○' : j === 'poor' ? ' ×' : j ? ' △' : ''}</td></tr>`; }).join('')}</table><p class="hint">○ 良好 △ 許容 × 不十分。${+state.opt.semBoot > 0 && !SE.boot ? 'ブートストラップが終わると結果ツリーに詳しい表が出ます。' : '結果ツリーにも詳しい表を出しました。'}</p>${SE.boot && SE.boot.ind.length ? `<h5>間接効果（ブートストラップ ${SE.boot.B}回）</h5><table class="out semfit">${SE.boot.ind.map(b => `<tr><td>${esc(b.e.from)} → ${esc(b.e.to)}</td><td>β = ${c2(b.e.std)}<br><small>BC 95%CI [${c2(b.std.bc[0])}, ${c2(b.std.bc[1])}]${b.raw.bc[0] > 0 || b.raw.bc[1] < 0 ? ' *' : ''}</small></td></tr>`).join('')}</table>` : ''}` : '';
@@ -4018,18 +4043,20 @@ function bindSemEditor(ov) {
     if (a === 'undo' && SE.hist.length) { state.db.semModel = JSON.parse(SE.hist.pop()); SE.sel = null; semChanged(true); }
     if (a === 'layout' && m.nodes.length) { semPush(); semAutoLayout(m); semChanged(false); }
     if (a === 'clear' && m.nodes.length && confirm('パス図をすべて消しますか？（「元に戻す」で戻せます）')) { semPush(); state.db.semModel = semKeepLook(m, { ...emptySemModel(), autoCov: m.autoCov }); SE.sel = null; semChanged(true); renderSemEditor(true); }
-    if (a === 'sizereset') { semPush(); delete m.latK; delete m.obsK; m.nodes.forEach(n => { delete n.rx; delete n.ry; delete n.w; delete n.h; }); semChanged(false); renderSemEditor(true); }
+    if (a === 'sizereset') { semPush(); delete m.latK; delete m.obsK; delete m.fontK; delete m.fontFollow; m.nodes.forEach(n => { delete n.rx; delete n.ry; delete n.w; delete n.h; }); semChanged(false); renderSemEditor(true); }
+    if (a === 'parcel') { try { parOpen(); } catch (err) { alert(err.message); } }
     if (a === 'text') { $('#semText').hidden = !$('#semText').hidden; renderSemEditor(); }
     if (a === 'fromtext') { try { const sp = S.sem.parse($('#semTa').value); semPush(); semSetK(m); const nm = semKeepLook(m, semFromSpec(sp)); nm.autoCov = m.autoCov; state.db.semModel = nm; SE.sel = null; semChanged(true); renderSemEditor(true); $('#semText').hidden = false; renderSemEditor(); } catch (err) { alert(err.message); } }
     if (a === 'run') { try { SE.fit = semRun(m); SE.boot = null; renderSemEditor(); semRunAll(m, SE.fit, BT => { SE.boot = BT; if (SE.open) renderSemEditor(); }); } catch (err) { alert(err.message); } }
   });
   ov.addEventListener('input', e => {
-    const id = e.target.id; if (id !== 'seLatK' && id !== 'seObsK') return; const m = state.db.semModel, k = id === 'seLatK' ? 'latK' : 'obsK';
+    const id = e.target.id; if (id !== 'seLatK' && id !== 'seObsK' && id !== 'seFontK') return; const m = state.db.semModel, k = { seLatK: 'latK', seObsK: 'obsK', seFontK: 'fontK' }[id];
     if (!SE.sliding) { semPush(); SE.sliding = true; }
     m[k] = +e.target.value; $('#' + id + 'v').textContent = Math.round(m[k] * 100) + '%'; renderSemEditor();
   });
   ov.addEventListener('change', e => {
-    if (e.target.id === 'seLatK' || e.target.id === 'seObsK') { SE.sliding = false; save(); return; }
+    if (e.target.id === 'seLatK' || e.target.id === 'seObsK' || e.target.id === 'seFontK') { SE.sliding = false; save(); return; }
+    if (e.target.id === 'seFontF') { semPush(); state.db.semModel.fontFollow = e.target.checked; semChanged(false); return; }
     if (e.target.id === 'seStd') { state.opt.semStd = e.target.checked; save(); renderSemEditor(); }
     if (e.target.id === 'seBoot') { state.opt.semBoot = e.target.value; save(); }
     if (e.target.id === 'seAuto') { state.db.semModel.autoCov = e.target.checked; semChanged(true); }
@@ -4078,7 +4105,7 @@ function bindSemEditor(ov) {
   ov.addEventListener('dragover', e => { if (e.target.closest('#semCv')) e.preventDefault(); });
   ov.addEventListener('drop', e => { if (!e.target.closest('#semCv')) return; e.preventDefault(); const name = e.dataTransfer.getData('text/plain'); if (name) semAddVar(name, svgPt(e)); });
   document.addEventListener('keydown', e => {
-    if (!SE.open || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return; const m = state.db.semModel;
+    if (!SE.open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || ($('#parDlg') && !$('#parDlg').hidden)) return; const m = state.db.semModel;
     if ((e.key === 'Delete' || e.key === 'Backspace') && SE.sel) { e.preventDefault(); semPush(); m.nodes = m.nodes.filter(n => n.id !== SE.sel); m.edges = m.edges.filter(q => q.id !== SE.sel && q.from !== SE.sel && q.to !== SE.sel); SE.sel = null; semChanged(true); renderSemEditor(true); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && SE.hist.length) { e.preventDefault(); state.db.semModel = JSON.parse(SE.hist.pop()); SE.sel = null; semChanged(true); renderSemEditor(true); }
     if (e.key === 'Escape') { if (SE.pending) { SE.pending = null; renderSemEditor(); } else semClose(); }
@@ -4099,6 +4126,247 @@ $('#panelBody').addEventListener('click', e => {
   if (a === 'semopen') semOpen();
   if (a === 'semcfa') { try { semCfaFromFa(); } catch (err) { $('#msg').textContent = err.message; } }
 });
+
+// ===== 構造方程式モデリング：アイテム・パーセリング（項目をまとめて小包＝パーセルにする） =====
+// 分け方：項目と構成概念のバランス法（Little et al., 2002）・無作為・奇数偶数・手動（下位尺度など）
+// 無作為配分のばらつき（Sterba & MacCallum, 2010）も調べられる
+const PAR = { cfg: {}, seed: 1234, nAlloc: '100', job: null, msg: '', cfaCache: {} };
+const PAR_METHODS = [['balance', '項目と構成概念のバランス法（推奨）'], ['random', '無作為'], ['oddeven', '奇数・偶数（項目の順に交互）'], ['manual', '手動（下位尺度などに合わせる）']];
+
+// 潜在変数ごとの指標（潜在変数 → 観測変数 の矢印の先）
+function parItemsOf(m, lat) { return m.edges.filter(e => e.type === 'path' && e.from === lat.id).map(e => m.nodes.find(n => n.id === e.to)).filter(n => n && n.kind === 'obs'); }
+function parCandidates(m) { return m.nodes.filter(n => n.kind === 'lat' && parItemsOf(m, n).length >= 4); }
+function parColNum(name) { const j = state.db.cols.findIndex(c => c.name === name); need(j >= 0, `「${name}」がデータの列にありません。`); need(colType(j) === 'num', `「${name}」は数値の列ではありません。`); return dbCol(j).map(toNum); }
+
+// 1 因子 CFA（1 次元性の確認と、バランス法の負荷量）
+function parCfa1(lat, items) {
+  const key = lat.name + '|' + items.join('|'); if (PAR.cfaCache[key]) return PAR.cfaCache[key];
+  const raw = items.map(parColNum), ok = raw[0].map((_, i) => raw.every(c => isFinite(c[i]))), data = raw.map(c => c.filter((_, i) => ok[i]));
+  need(data[0].length > items.length + 2, 'データの人数が少なすぎます。');
+  const F = S.sem.fit(S.sem.parse(`F1 =~ ${items.join(' + ')}`), data), load = {};
+  F.est.filter(e => e.role === 'load').forEach(e => { load[e.to] = e.std; });
+  return (PAR.cfaCache[key] = { F, load, n: data[0].length });
+}
+
+// 項目をパーセルに割り当てる（戻り値：項目名 → パーセル番号 0..k-1）
+function parAllocate(items, k, method, load, R) {
+  const out = {};
+  if (method === 'balance') { // 負荷の高い順に 1→k、k→1、1→k … と蛇行して配る
+    const ord = items.slice().sort((a, b) => Math.abs(load[b]) - Math.abs(load[a]));
+    ord.forEach((it, i) => { const r = Math.floor(i / k), c = i % k; out[it] = r % 2 === 0 ? c : k - 1 - c; });
+  } else if (method === 'random') {
+    const ord = items.slice(); for (let i = ord.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [ord[i], ord[j]] = [ord[j], ord[i]]; }
+    ord.forEach((it, i) => { out[it] = i % k; });
+  } else items.forEach((it, i) => { out[it] = i % k; }); // 奇数・偶数（項目の順に交互）
+  return out;
+}
+const parGroups = (items, k, asg) => Array.from({ length: k }, (_, p) => items.filter(it => asg[it] === p));
+const parName = (lat, p) => `${lat}_P${p + 1}`;
+function parColRaw(name) { const j = state.db.cols.findIndex(c => c.name === name); return (typeof rawColBase === 'function' ? rawColBase(j) : dbCol(j)).map(toNum); } // ケースの選択に関係なく全員分
+function parMeans(groups) { // 各パーセルの得点＝項目の平均（欠測は除いて平均。すべて欠測なら欠測）
+  return groups.map(g => { const cols = g.map(parColRaw); return cols[0].map((_, i) => { const v = cols.map(c => c[i]).filter(isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; }); });
+}
+
+// 設定（潜在変数ごと）
+function parConf(m, lat) {
+  const items = parItemsOf(m, lat).map(n => n.name), c = PAR.cfg[lat.id] || (PAR.cfg[lat.id] = { use: true, k: 3, method: 'balance', manual: null });
+  c.k = Math.max(2, Math.min(c.k, items.length - 1));
+  let asg;
+  if (c.method === 'manual' && c.manual && items.every(it => c.manual[it] != null && c.manual[it] < c.k)) asg = c.manual;
+  else { let load = {}; try { load = parCfa1(lat, items).load; } catch (e) { } asg = parAllocate(items, c.k, c.method === 'manual' ? 'balance' : c.method, load, rng(PAR.seed + lat.id.length * 7919 + lat.name.length)); }
+  return { items, c, asg, groups: parGroups(items, c.k, asg) };
+}
+
+// ----- ダイアログ -----
+function parOpen() {
+  let dl = $('#parDlg');
+  if (!dl) { dl = document.createElement('div'); dl.id = 'parDlg'; dl.className = 'pardlg'; document.body.appendChild(dl); parBind(dl); }
+  PAR.msg = ''; dl.hidden = false; parRender();
+}
+function parClose() { const dl = $('#parDlg'); if (dl) dl.hidden = true; }
+function parRender() {
+  const dl = $('#parDlg'), m = state.db.semModel, cands = parCandidates(m), done = m.parcels && Object.keys(m.parcels).length;
+  const J = v => v === 'good' ? '<span style="color:var(--accent)">○</span>' : v === 'poor' ? '<span style="color:var(--sig)">×</span>' : v ? '△' : '';
+  let body = '';
+  if (done) body += `<div class="parnote">このモデルは、すでにパーセルを使っています（${Object.keys(m.parcels).map(esc).join('・')}）。作り直すときは「元の項目に戻す」を押してから、もう一度設定してください。</div>`;
+  if (!cands.length) body += `<p class="hint">指標（観測変数）を 4 つ以上もつ潜在変数がありません。パーセリングは、1 つの潜在変数に項目がたくさんあるときに使います。</p>`;
+  cands.forEach(lat => {
+    const { items, c, asg, groups } = parConf(m, lat); let cfa = null, err = '';
+    try { cfa = parCfa1(lat, items); } catch (e) { err = e.message; }
+    const F = cfa && cfa.F, v = F ? semFitVerdict(F) : {}, warn = [];
+    if (F && F.df > 0 && (v.CFI === 'poor' || v.RMSEA === 'poor' || v.SRMR === 'poor')) warn.push('1 因子モデルの適合がよくありません。項目が 1 次元でない（下位因子がある）可能性があります。そのままパーセルにすると、モデルの誤りが見えなくなります。下位尺度ごとにまとめる（手動）か、パーセリングをやめることを考えてください。');
+    if (cfa && items.some(it => cfa.load[it] < 0)) warn.push(`負の負荷の項目（${items.filter(it => cfa.load[it] < 0).map(esc).join('・')}）があります。逆転項目を反転していない可能性があります。「データの加工」で反転してから使ってください。`);
+    if (cfa && items.some(it => Math.abs(cfa.load[it]) < .3)) warn.push(`負荷が .30 未満の項目（${items.filter(it => Math.abs(cfa.load[it]) < .3).map(esc).join('・')}）があります。`);
+    if (groups.some(g => !g.length)) warn.push('項目が 1 つも入っていないパーセルがあります。');
+    const other = m.edges.filter(e => items.some(it => { const id = m.nodes.find(n => n.name === it).id; return (e.from === id || e.to === id) && !(e.type === 'path' && e.from === lat.id); }));
+    if (other.length) warn.push('これらの項目には、ほかの矢印や共分散（誤差相関など）がついています。パーセルに置き換えると、それらは消えます。');
+    const sumL = groups.map(g => cfa ? g.reduce((a, it) => a + Math.abs(cfa.load[it] || 0), 0) / (g.length || 1) : NaN);
+    body += `<section class="parcard"><div class="parhd"><label><input type="checkbox" data-par-use="${lat.id}" ${c.use ? 'checked' : ''}> <b>${esc(lat.name)}</b>（${items.length} 項目）</label>
+      <label>パーセルの数 <select data-par-k="${lat.id}">${[2, 3, 4, 5].filter(k => k < items.length).map(k => `<option ${k === c.k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+      <label>分け方 <select data-par-m="${lat.id}">${PAR_METHODS.map(([k, l]) => `<option value="${k}" ${k === c.method ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      ${err ? `<p class="hint" style="color:var(--sig)">${esc(err)}</p>` : `<p class="parfit">1 因子 CFA（n = ${cfa.n}）：${F.df > 0 ? `χ²(${F.df}) = ${fmt(F.chi, 2)}, CFI = ${c2(F.cfi)} ${J(v.CFI)}, RMSEA = ${c2(F.rmsea)} ${J(v.RMSEA)}, SRMR = ${c2(F.srmr)} ${J(v.SRMR)}` : '自由度 0'}</p>`}
+      ${warn.map(w => `<p class="parwarn">${w}</p>`).join('')}
+      <div class="partbl"><table><thead><tr><th>項目</th><th class="c">標準化負荷</th>${groups.map((_, p) => `<th class="c">P${p + 1}</th>`).join('')}</tr></thead><tbody>
+      ${items.map(it => `<tr><td>${esc(it)}</td><td class="c">${cfa ? c2(cfa.load[it]) : '—'}</td>${groups.map((_, p) => `<td class="c"><input type="radio" name="pr-${lat.id}-${esc(it)}" data-par-a="${lat.id}" data-it="${esc(it)}" value="${p}" ${asg[it] === p ? 'checked' : ''}></td>`).join('')}</tr>`).join('')}
+      <tr class="parsum"><td>項目数／負荷の平均</td><td></td>${groups.map((g, p) => `<td class="c">${g.length}／${isFinite(sumL[p]) ? c2(sumL[p]) : '—'}</td>`).join('')}</tr></tbody></table></div>
+      <p class="hint">${c.method === 'balance' ? '1 因子 CFA の負荷が高い順に P1 → P' + c.k + '、P' + c.k + ' → P1 … と配り、パーセルどうしの負荷をそろえます（Little et al., 2002）。' : c.method === 'random' ? '乱数で配りました（乱数の種は下で変えられます）。' : c.method === 'oddeven' ? '項目の並び順に P1, P2, … と交互に配りました。' : '丸をクリックして、項目ごとにパーセルを決めます（下位尺度ごとにまとめるときなど）。'}丸をクリックすると手動に切り替わります。</p></section>`;
+  });
+  dl.innerHTML = `<div class="parbox" role="dialog" aria-label="アイテム・パーセリング"><div class="parhead"><b>アイテム・パーセリング</b><span style="flex:1"></span><button class="btn" data-par="close">閉じる</button></div>
+    <div class="parscroll"><p class="hint">1 つの潜在変数の項目を、いくつかの「パーセル」（項目の平均）にまとめて指標にします。推定が安定し、適合度もよくなりやすい方法です。ただし、<b>測定モデルそのもの（尺度の因子構造）を確かめたいときには向きません。</b>関心が潜在変数どうしの関係（構造部分）にあるときに使い、項目が 1 次元であることを先に確かめます（Little et al., 2002, 2013; Bandalos, 2002）。</p>
+    ${body}${PAR.msg}</div>
+    <div class="parfoot"><label class="hint">乱数の種 <input id="parSeed" type="number" value="${PAR.seed}" style="width:6em"></label>
+      <label class="hint">無作為配分 <select id="parN">${['50', '100', '200', '500'].map(v => `<option ${PAR.nAlloc === v ? 'selected' : ''}>${v}</option>`).join('')}</select> 通り</label>
+      <button class="btn" data-par="alloc" ${cands.length && !done ? '' : 'disabled'}>無作為配分のばらつきを調べる</button><span style="flex:1"></span>
+      ${done ? '<button class="btn" data-par="revert">元の項目に戻す</button>' : ''}<button class="btn primary" data-par="apply" ${cands.length && !done ? '' : 'disabled'}>パーセルを作って図を置き換える</button></div></div>`;
+}
+function parBind(dl) {
+  dl.addEventListener('click', e => {
+    if (e.target === dl) { parClose(); return; }
+    const b = e.target.closest('[data-par]'); if (!b) return; const a = b.dataset.par;
+    try {
+      if (a === 'close') parClose();
+      if (a === 'apply') parApply();
+      if (a === 'revert') parRevert();
+      if (a === 'alloc') parAllocRun();
+      if (a === 'cancel' && PAR.job) PAR.job.cancel = true;
+    } catch (err) { PAR.msg = `<p class="parwarn">${esc(err.message)}</p>`; parRender(); }
+  });
+  dl.addEventListener('change', e => {
+    const t = e.target, m = state.db.semModel, lat = id => m.nodes.find(n => n.id === id);
+    if (t.dataset.parUse) { PAR.cfg[t.dataset.parUse].use = t.checked; }
+    if (t.dataset.parK) { const c = PAR.cfg[t.dataset.parK]; c.k = +t.value; c.manual = null; if (c.method === 'manual') c.method = 'balance'; }
+    if (t.dataset.parM) { const c = PAR.cfg[t.dataset.parM]; if (t.value === 'manual') c.manual = { ...parConf(m, lat(t.dataset.parM)).asg }; c.method = t.value; }
+    if (t.dataset.parA) { const L = lat(t.dataset.parA), c = PAR.cfg[L.id], cur = parConf(m, L).asg; c.manual = { ...cur, [t.dataset.it]: +t.value }; c.method = 'manual'; }
+    if (t.id === 'parSeed') PAR.seed = Math.round(+t.value) || 1;
+    if (t.id === 'parN') { PAR.nAlloc = t.value; return; }
+    PAR.msg = ''; parRender();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#parDlg') && !$('#parDlg').hidden) { e.stopImmediatePropagation(); parClose(); } }, true);
+}
+
+// パーセルに置き換えたモデル（m は変えずに複製を返す）。groups: { latId: [[項目…], …] }
+function parModel(m, plan) {
+  const mm = JSON.parse(JSON.stringify(m));
+  Object.entries(plan).forEach(([lid, groups]) => {
+    const lat = mm.nodes.find(n => n.id === lid), its = parItemsOf(mm, lat), ids = new Set(its.map(n => n.id));
+    const xs = its.map(n => n.x), ys = its.map(n => n.y), vert = Math.max(...ys) - Math.min(...ys) >= Math.max(...xs) - Math.min(...xs);
+    const ax = vert ? ys : xs, lo = Math.min(...ax), hi = Math.max(...ax), cx = S.mean(xs), cy = S.mean(ys), k = groups.length;
+    mm.nodes = mm.nodes.filter(n => !ids.has(n.id)); mm.edges = mm.edges.filter(e => !ids.has(e.from) && !ids.has(e.to));
+    groups.forEach((g, p) => {
+      const t = k > 1 ? lo + (hi - lo) * p / (k - 1) : (lo + hi) / 2, n = { id: 'n' + mm.nid++, name: parName(lat.name, p), kind: 'obs', x: Math.round(vert ? cx : t), y: Math.round(vert ? t : cy) };
+      mm.nodes.push(n); mm.edges.push({ id: 'e' + mm.nid++, type: 'path', from: lat.id, to: n.id, fix: null });
+    });
+  });
+  return mm;
+}
+// パーセルの列の値をモデルに使って推定する（データの列は作らない）
+function parFit(mm, extra) {
+  const spec = semSpec(mm), raw = spec.obs.map(v => extra[v] || parColNum(v)), ok = raw[0].map((_, i) => raw.every(c => isFinite(c[i]))), data = raw.map(c => c.filter((_, i) => ok[i]));
+  need(data[0].length > spec.obs.length + 2, 'データの人数が少なすぎます。');
+  return S.sem.fit(spec, data);
+}
+function parPlan(m) { // 使う潜在変数ごとの割り当て
+  const plan = {}, info = [];
+  parCandidates(m).forEach(lat => { const { items, c, groups } = parConf(m, lat); if (!c.use) return; need(groups.every(g => g.length), `「${lat.name}」に、項目が 1 つも入っていないパーセルがあります。`); plan[lat.id] = groups; info.push({ lat, items, c, groups }); });
+  need(info.length, 'パーセルにする潜在変数を 1 つ以上選んでください。');
+  return { plan, info };
+}
+
+// ----- パーセルを作る -----
+function parSetCol(name, label, vals, recipe) { // 同じ名前の列があれば値を書き換える（作り直しに対応）
+  const d = state.db, j = d.cols.findIndex(c => c.name === name);
+  if (j < 0) return ppAddCol({ name, label }, vals, recipe);
+  d.rows.forEach((r, i) => { while (r.length < d.cols.length) r.push(''); r[j] = isFinite(vals[i]) ? String(+vals[i].toFixed(6)) : ''; });
+  d.cols[j].label = label; if (d.recipe) d.recipe = d.recipe.filter(x => !x.t.startsWith(`パーセル ${name}：`)); d.recipe = d.recipe || []; d.recipe.push({ t: recipe.t, r: recipe.r }); return name;
+}
+function parApply() {
+  const m = state.db.semModel, { plan, info } = parPlan(m), before = JSON.parse(JSON.stringify(m)), cfas = {};
+  info.forEach(({ lat, items, groups }) => {
+    try { cfas[lat.id] = parCfa1(lat, items); } catch (e) { }
+    const vals = parMeans(groups);
+    groups.forEach((g, p) => { const nm = parName(lat.name, p); parSetCol(nm, `${lat.name} のパーセル ${p + 1}（${g.join('・')} の平均）`, vals[p], { t: `パーセル ${nm}：${g.join('・')} の平均`, r: `d$${RQ(nm)} <- rowMeans(d[, c(${g.map(RS).join(', ')})], na.rm = TRUE)   # パーセル（項目の平均）` }); });
+  });
+  semPush(); const mm = parModel(m, plan);
+  mm.parcels = {}; info.forEach(({ lat, items, c, groups }) => { mm.parcels[lat.name] = { method: c.method, k: c.k, items, groups }; });
+  mm.parcelOrig = before; state.db.semModel = mm; SE.sel = null; SE.fit = null; save();
+  addResult({ title: `アイテム・パーセリング（${info.map(x => x.lat.name).join('・')}）`, html: parReport(info, cfas), r: parRcode(before, mm, info) }, true);
+  parClose(); renderSemEditor(true);
+  const h = $('#semHint'); if (h) h.textContent = 'パーセルを作り、図の指標を置き換えました。データにパーセルの列を加えています。「推定する」で推定できます（パーセルの中身は結果ツリーに出しました）。';
+}
+function parRevert() {
+  const m = state.db.semModel; need(m.parcelOrig, '元に戻せる情報がありません。');
+  semPush(); const o = m.parcelOrig; semKeepLook(m, o); state.db.semModel = o; SE.sel = null; SE.fit = null; save(); PAR.msg = '<p class="hint">元の項目のモデルに戻しました（データに加えたパーセルの列は残しています）。</p>'; parRender(); renderSemEditor(true);
+}
+const PAR_DESC = { balance: '項目と構成概念のバランス法（item-to-construct balance; Little et al., 2002）', random: '無作為配分', oddeven: '項目の順に交互に配る方法', manual: '内容（下位尺度）に基づく手動の割り当て' };
+function parReport(info, cfas) {
+  let h = '<p class="note">パーセルの得点は、含まれる項目の平均です（欠測は除いて平均）。データシートに列として加えました。</p>';
+  info.forEach(({ lat, items, c, groups }) => {
+    const cf = cfas[lat.id], F = cf && cf.F;
+    h += `<h4>${esc(lat.name)}：${groups.length} パーセル（${PAR_DESC[c.method]}）</h4>` + table(['パーセル', '項目', '項目数', '標準化負荷の平均'], groups.map((g, p) => [parName(esc(lat.name), p), g.map(esc).join('・'), g.length, cf ? c2(g.reduce((a, it) => a + Math.abs(cf.load[it]), 0) / g.length) : '—']));
+    if (F) h += `<p class="note">1 因子 CFA（項目 ${items.length}、n = ${cf.n}）：${F.df > 0 ? `χ²(${F.df}) = ${fmt(F.chi, 2)}, ${apaP(F.pv)}, CFI = ${c2(F.cfi)}, TLI = ${c2(F.tli)}, RMSEA = ${c2(F.rmsea)}, SRMR = ${c2(F.srmr)}` : '自由度 0'}。標準化負荷：${items.map(it => `${esc(it)} ${c2(cf.load[it])}`).join('、')}。</p>`;
+  });
+  h += interp('パーセリングは、項目を少数のパーセルにまとめて指標にする方法です。指標が減るので推定が安定し、項目ごとの細かな誤差がならされて適合度もよくなりやすくなります。', '一方で、項目が 1 次元でないままパーセルにすると、本来あるはずのモデルの誤り（交差負荷や誤差相関）が隠れてしまいます（Bandalos, 2002; Marsh et al., 2013）。上の 1 因子 CFA の適合がよいことを確かめたうえで使い、論文には「どの項目をどのパーセルにまとめたか」と「分け方」を書きます。', 'バランス法は、各パーセルの負荷の平均がそろうように配る方法です。無作為に分けた場合は、分け方しだいで結果が変わることがあるため、「無作為配分のばらつきを調べる」で確かめておくと安心です（Sterba & MacCallum, 2010）。');
+  const t = info.map(({ lat, items, c, groups }) => `${esc(lat.name)}の ${items.length} 項目は${PAR_DESC[c.method].replace(/（.*）/, '')}により ${groups.length} つのパーセルにまとめた（${groups.map((g, p) => `${parName(esc(lat.name), p)}：${g.map(esc).join('・')}`).join('、')}）`).join('。');
+  h += apa('論文記載例（方法）', `推定の安定性を高めるため、項目をパーセルにまとめて潜在変数の指標とした（Little et al., 2002）。${t}。パーセルの得点には項目の平均を用いた。事前に各尺度の 1 因子確認的因子分析を行い、1 次元性を確認した。`);
+  return h;
+}
+function parRcode(before, mm, info) {
+  const items = [...new Set(info.flatMap(x => x.items))], others = semSpec(mm).obs.filter(v => !info.some(x => x.groups.some((_, p) => parName(x.lat.name, p) === v)));
+  const J = [...items, ...others].map(nm0 => state.db.cols.findIndex(c => c.name === nm0)).filter(j => j >= 0);
+  let s = rHeader('アイテム・パーセリング', ['lavaan']) + rDataFrame(J.map(j => state.db.cols[j].name), J.map(j => dbCol(j)));
+  info.forEach(({ lat, items: its, groups }) => {
+    s += `\n# ${lat.name}：1 因子 CFA で 1 次元性を確認\nfit1 <- lavaan::cfa('F1 =~ ${its.join(' + ')}', data = d)\nlavaan::fitMeasures(fit1, c("chisq", "df", "pvalue", "cfi", "tli", "rmsea", "srmr"))\nlavaan::standardizedSolution(fit1)[1:${its.length}, c("rhs", "est.std")]\n# パーセル（項目の平均）\n`;
+    groups.forEach((g, p) => { s += `d$${RQ(parName(lat.name, p))} <- rowMeans(d[, c(${g.map(RS).join(', ')})], na.rm = TRUE)\n`; });
+  });
+  const auto = semAutoCov(mm).map(e => `${mm.nodes.find(n => n.id === e.from).name} ~~ ${mm.nodes.find(n => n.id === e.to).name}`);
+  s += `\n# パーセルを指標にしたモデル\nmodel <- '\n${semSyntax(mm)}${auto.length ? '\n' + auto.join('\n') : ''}\n'\nfit <- lavaan::sem(model, data = d${mm.autoCov ? '' : ', auto.cov.lv.x = FALSE'})\nsummary(fit, fit.measures = TRUE, standardized = TRUE)\n`;
+  s += `\n# 無作為配分のばらつき（Sterba & MacCallum, 2010）は semTools でも調べられます\n# item.syntax <- '\n${info.map(x => `#   ${x.lat.name} =~ ${x.items.join(' + ')}`).join('\n')}\n# '\n# semTools::parcelAllocation(model, data = d, parcel.names = c(${info.flatMap(x => x.groups.map((_, p) => RS(parName(x.lat.name, p)))).join(', ')}), item.syntax = item.syntax, nAlloc = 100)\n`;
+  return s;
+}
+
+// ----- 無作為配分のばらつき -----
+function parAllocRun() {
+  const m = state.db.semModel, { info } = parPlan(m), N = +PAR.nAlloc, R = rng(PAR.seed * 31 + 7);
+  const cols = {}; info.forEach(({ items }) => items.forEach(it => { cols[it] = parColNum(it); }));
+  const plan0 = {}; info.forEach(x => { plan0[x.lat.id] = x.groups; });
+  const keyOf = e => e.type === 'A' ? `${e.from} → ${e.to}` : `${e.from} ↔ ${e.to}`;
+  const isPN = name => info.some(x => x.groups.some((_, p) => parName(x.lat.name, p) === name));
+  const pick = F => { const o = { CFI: F.cfi, TLI: F.tli, RMSEA: F.rmsea, SRMR: F.srmr, 'χ²': F.chi }; F.est.filter(e => (e.type === 'A' && e.role !== 'load') || (e.type === 'S' && e.i !== e.j && !isPN(e.from) && !isPN(e.to))).forEach(e => { o[keyOf(e)] = e.std; o['p:' + keyOf(e)] = e.p; }); return o; };
+  const fitPlan = plan => { const mm = parModel(m, plan), extra = {}; Object.entries(plan).forEach(([lid, groups]) => { const L = m.nodes.find(n => n.id === lid); groups.forEach((g, p) => { extra[parName(L.name, p)] = cols[g[0]].map((_, i) => { const v = g.map(it => cols[it][i]).filter(isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; }); }); }); return parFit(mm, extra); };
+  const ref = fitPlan(plan0); need(ref.conv, '今の割り当てで推定が収束しませんでした。');
+  const res = [], job = PAR.job = { cancel: false }; let fail = 0, done = 0;
+  const tick = () => {
+    if (job.cancel) { PAR.job = null; PAR.msg = '<p class="hint">無作為配分の計算を中止しました。</p>'; parRender(); return; }
+    const t0 = performance.now();
+    while (done < N && performance.now() - t0 < 60) {
+      const plan = {}; info.forEach(({ lat, items, c }) => { plan[lat.id] = parGroups(items, c.k, parAllocate(items, c.k, 'random', {}, R)); });
+      try { const F = fitPlan(plan); if (F.conv && !F.heywood.length) res.push(pick(F)); else fail++; } catch (e) { fail++; }
+      done++;
+    }
+    PAR.msg = `<div class="parprog"><b>無作為配分を推定中</b> ${done} / ${N}<progress max="${N}" value="${done}"></progress><button class="btn" data-par="cancel">中止</button></div>`; parRender();
+    if (done < N) { setTimeout(tick, 0); return; }
+    PAR.job = null; need(res.length >= 10, '多くの配分で推定が収束しませんでした。');
+    const html = parAllocReport(info, pick(ref), res, N, fail);
+    addResult({ title: `無作為配分のばらつき（${info.map(x => x.lat.name).join('・')}、${N} 通り）`, html, r: parRcode(m, parModel(m, plan0), info) }, true);
+    PAR.msg = `<div class="parres"><h5>無作為配分のばらつき（${res.length} 通り）</h5>${html.split('<h4>')[1] ? '<h4>' + html.split('<h4>')[1].split('<div class="interp">')[0] : ''}<p class="hint">詳しい表は結果ツリーにも出しました。</p></div>`; parRender();
+    const sc = $('#parDlg .parscroll'); if (sc) sc.scrollTop = sc.scrollHeight;
+  };
+  setTimeout(tick, 0);
+}
+function parAllocReport(info, ref, res, N, fail) {
+  const q = (a, p) => { const s = a.slice().sort((x, y) => x - y), i = (s.length - 1) * p, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+  const keys = Object.keys(ref).filter(k => !k.startsWith('p:'));
+  const rows = keys.map(k => { const a = res.map(r => r[k]).filter(isFinite), P = res.map(r => r['p:' + k]).filter(isFinite), d = k === 'χ²' ? 2 : null, f = v => d ? fmt(v, d) : c2(v);
+    return [esc(k), f(ref[k]), f(q(a, .5)), `${f(Math.min(...a))} 〜 ${f(Math.max(...a))}`, `[${f(q(a, .025))}, ${f(q(a, .975))}]`, P.length ? Math.round(P.filter(p => p < .05).length / P.length * 100) + '%' : '']; });
+  let h = `<p class="note">各潜在変数の項目を、同じパーセル数のまま無作為に ${N} 通り配り直して推定しました（収束 ${res.length} 通り${fail ? `、収束しない・不適解の ${fail} 通りは除外` : ''}）。係数は標準化推定値です。</p>`;
+  h += '<h4>配分による変動</h4>' + table(['指標・係数', '今の割り当て', '中央値', '最小 〜 最大', '95% の範囲', '有意（p < .05）の割合'], rows);
+  const paths = keys.filter(k => k.includes('→') || k.includes('↔')), unstable = paths.filter(k => { const P = res.map(r => r['p:' + k]).filter(isFinite), s = P.filter(p => p < .05).length / (P.length || 1); return s > .05 && s < .95; });
+  const cfi = res.map(r => r.CFI).filter(isFinite);
+  h += interp(`無作為に分けると、どの項目が同じパーセルに入るかで結果が少し変わります。この表は、その揺れの大きさを示します（Sterba & MacCallum, 2010）。CFI は ${c2(Math.min(...cfi))} 〜 ${c2(Math.max(...cfi))} の範囲で動きました。`,
+    unstable.length ? `<b>${unstable.map(esc).join('、')}</b> は、配分によって有意になったりならなかったりします。結論がパーセルの分け方に左右されるので、無作為の 1 回だけで判断せず、バランス法や内容に基づく割り当てを使い、この表もあわせて報告することを勧めます。` : (paths.length ? 'どのパスも、ほとんどの配分で有意かどうかの判断が変わりませんでした。結論はパーセルの分け方に左右されにくいといえます。' : ''),
+    '「今の割り当て」は、ダイアログで選んでいる分け方（バランス法など）の結果です。中央値に近ければ、典型的な結果だといえます。');
+  return h;
+}
 
 // ===== 回帰の診断・階層的重回帰分析・回帰平面の 3D プロット =====
 

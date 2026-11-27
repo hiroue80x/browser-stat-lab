@@ -19,17 +19,20 @@ state.opt.semStd = state.opt.semStd ?? true; state.opt.semBoot = state.opt.semBo
 // ----- 文字の幅・図形 -----
 const tw = s => [...String(s)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 13 : 7.2), 0);
 // 図形の大きさ：全体の倍率（モデルの latK / obsK）と、変数ごとに手で変えた大きさ（n.rx, n.ry / n.w, n.h）
-let semK = { lat: 1, obs: 1 };
-const semSetK = m => { semK = { lat: +(m && m.latK) || 1, obs: +(m && m.obsK) || 1 }; };
+// 文字：全体の倍率 fontK。fontFollow（既定 true）のときは、図形の高さに合わせて変数名の文字も大きくする
+let semK = { lat: 1, obs: 1, font: 1, follow: true };
+const semSetK = m => { semK = { lat: +(m && m.latK) || 1, obs: +(m && m.obsK) || 1, font: +(m && m.fontK) || 1, follow: !(m && m.fontFollow === false) }; };
+const semFs = n => n.kind === 'lat' ? semK.font * (semK.follow ? (n.ry ? n.ry / 25 : semK.lat) : 1) : semK.font * (semK.follow ? (n.h ? n.h / 30 : semK.obs) : 1); // 変数名の文字の倍率
 const nodeSize = n => {
-  if (n.kind === 'lat') return n.rx ? { rx: n.rx, ry: n.ry } : { rx: Math.round(Math.max(40, tw(n.name) / 2 + 18) * semK.lat), ry: Math.round(25 * semK.lat) };
-  return n.w ? { w: n.w, h: n.h } : { w: Math.round(Math.max(62, tw(n.name) + 20) * semK.obs), h: Math.round(30 * semK.obs) };
+  const f = semFs(n);
+  if (n.kind === 'lat') return n.rx ? { rx: n.rx, ry: n.ry } : { rx: Math.round(Math.max(40 * semK.lat, tw(n.name) * f / 2 + 18 * semK.lat)), ry: Math.round(Math.max(25 * semK.lat, 12.5 * f / 2 + 9)) };
+  return n.w ? { w: n.w, h: n.h } : { w: Math.round(Math.max(62 * semK.obs, tw(n.name) * f + 20 * semK.obs)), h: Math.round(Math.max(30 * semK.obs, 12.5 * f + 12)) };
 };
-const semKeepLook = (from, to) => { ['latK', 'obsK'].forEach(k => { if (from[k]) to[k] = from[k]; }); return to; };
+const semKeepLook = (from, to) => { ['latK', 'obsK', 'fontK', 'fontFollow'].forEach(k => { if (from[k] != null) to[k] = from[k]; }); return to; };
 function boundary(n, dx, dy) { // 中心から (dx, dy) 方向に進んだときの縁の点
   const L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, z = nodeSize(n);
   if (n.kind === 'lat') { const t = 1 / Math.sqrt((ux / z.rx) ** 2 + (uy / z.ry) ** 2); return [n.x + ux * t, n.y + uy * t]; }
-  if (n.kind === 'err') return [n.x + ux * 12, n.y + uy * 12];
+  if (n.kind === 'err') { const r = 12 * Math.max(1, semK.font * .9); return [n.x + ux * r, n.y + uy * r]; }
   const t = Math.min(Math.abs(ux) > 1e-9 ? z.w / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-9 ? z.h / 2 / Math.abs(uy) : Infinity); return [n.x + ux * t, n.y + uy * t];
 }
 
@@ -65,21 +68,21 @@ function semFromSpec(spec) { // 自動配置
   semAutoLayout(m); return m;
 }
 function semAutoLayout(m) {
-  semSetK(m);
+  semSetK(m); const fsO = semK.font * (semK.follow ? semK.obs : 1), vs = Math.max(52, 30 * semK.obs + 12 + 12 * semK.font), hs = 112 * Math.max(1, semK.obs, fsO), gx = Math.max(1, semK.lat, (semK.obs + fsO) / 2), gO = vs / 52, gL = Math.max(1, semK.lat); // 図形・文字が大きいときは間隔を広げる
   const isInd = n => n.kind === 'obs' && m.edges.some(e => e.type === 'path' && e.to === n.id && m.nodes.find(x => x.id === e.from).kind === 'lat') && !m.edges.some(e => e.type === 'path' && e.from === n.id);
   const struct = m.nodes.filter(n => !isInd(n)), depth = {}; struct.forEach(n => depth[n.id] = 0);
   for (let k = 0; k < struct.length; k++) m.edges.filter(e => e.type === 'path' && depth[e.from] != null && depth[e.to] != null).forEach(e => depth[e.to] = Math.max(depth[e.to], Math.min(depth[e.from] + 1, struct.length)));
   const maxD = Math.max(0, ...Object.values(depth)), ind = l => m.nodes.filter(n => isInd(n) && m.edges.find(e => e.type === 'path' && e.to === n.id).from === l.id);
-  const side = n => depth[n.id] === 0 ? 'L' : depth[n.id] === maxD ? 'R' : 'B', colX = d => 260 + d * 300, cols = [];
+  const side = n => depth[n.id] === 0 ? 'L' : depth[n.id] === maxD ? 'R' : 'B', colX = d => 260 * gx + d * 300 * gx, cols = [];
   for (let d = 0; d <= maxD; d++) {
     const ns = struct.filter(n => depth[n.id] === d); let y = 0;
-    ns.forEach(n => { const k = ind(n).length, sd = side(n), h = sd === 'B' ? 190 : Math.max(70, k * 52); n.x = colX(d); n.y = y + (sd === 'B' ? 30 : h / 2) - (sd === 'B' && d > 0 && d < maxD ? 150 : 0); n._h = h; y += h + 36; });
+    ns.forEach(n => { const k = ind(n).length, sd = side(n), h = sd === 'B' ? 190 * gO : Math.max(70 * gL, k * 52 * gO); n.x = colX(d); n.y = y + (sd === 'B' ? 30 : h / 2) - (sd === 'B' && d > 0 && d < maxD ? 150 * gO : 0); n._h = h; y += h + 36; });
     cols.push({ ns, h: y - 36 });
   }
   const H = Math.max(...cols.map(c => c.h), 0), sd0 = side;
   cols.forEach(c => c.ns.forEach(n => {
     n.y += (H - c.h) / 2 + 60 + (sd0(n) === 'B' ? 40 : 0); const k = ind(n), sd = side(n);
-    k.forEach((o, i) => { if (sd === 'B') { o.x = n.x + (i - (k.length - 1) / 2) * 112; o.y = n.y - 105; } else { o.x = n.x + (sd === 'L' ? -160 : 160); o.y = n.y + (i - (k.length - 1) / 2) * 52; } });
+    k.forEach((o, i) => { if (sd === 'B') { o.x = n.x + (i - (k.length - 1) / 2) * hs; o.y = n.y - 105 * Math.max(gO, gL); } else { o.x = n.x + (sd === 'L' ? -160 : 160) * gx; o.y = n.y + (i - (k.length - 1) / 2) * vs; } });
     delete n._h;
   }));
   const minX = Math.min(...m.nodes.map(n => n.x - (nodeSize(n).w || nodeSize(n).rx * 2) / 2)), minY = Math.min(...m.nodes.map(n => n.y));
@@ -129,36 +132,37 @@ function semSvg(m, o = {}) { // o: { fit, std, interactive, sel, pending, fitBox
   // 誤差
   errs.forEach(er => {
     const n = m.nodes.find(x => x.id === er.of), p = boundary(er, n.x - er.x, n.y - er.y), q = boundary(n, er.x - n.x, er.y - n.y);
-    body += `<path d="M${p[0].toFixed(1)},${p[1].toFixed(1)} L${q[0].toFixed(1)},${q[1].toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#am${u})"/><circle cx="${er.x}" cy="${er.y}" r="12" fill="var(--sheet)" stroke="var(--muted)"/><text x="${er.x}" y="${er.y + 4}" text-anchor="middle" style="font-size:10px">${er.name}</text>`;
+    body += `<path d="M${p[0].toFixed(1)},${p[1].toFixed(1)} L${q[0].toFixed(1)},${q[1].toFixed(1)}" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#am${u})"/><circle cx="${er.x}" cy="${er.y}" r="${12 * Math.max(1, semK.font * .9)}" fill="var(--sheet)" stroke="var(--muted)"/><text x="${er.x}" y="${er.y + 3.6 * semK.font}" text-anchor="middle" style="font-size:${10 * semK.font}px">${er.name}</text>`;
   });
   // 矢印・共分散
   [...semAutoCov(m), ...m.edges].forEach(e => {
     const g = semEdgeGeom(m, e, nodes, cent), A = nameOf(e.from), B = nameOf(e.to), es = F ? estOf(e.type === 'path' ? 'A' : 'S', A, B) : null;
     const sig = !es || !isFinite(es.p) || es.p < .05, sel = o.sel === e.id, col = sel ? 'var(--sig)' : F ? (sig ? 'var(--accent)' : 'var(--muted)') : 'var(--fg)', mk = sel ? 'as' : F ? (sig ? 'aa' : 'am') : 'af';
-    if (e.auto && !F) { body += `<path d="${g.d}" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#am${u})" marker-start="url(#am${u})"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4).toFixed(1)}" text-anchor="middle" style="font-size:10px;fill:var(--muted)">自動</text>`; return; }
+    if (e.auto && !F) { body += `<path d="${g.d}" fill="none" stroke="var(--muted)" stroke-opacity=".55" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#am${u})" marker-start="url(#am${u})"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 3.6 * semK.font).toFixed(1)}" text-anchor="middle" style="font-size:${10 * semK.font}px;fill:var(--muted)">自動</text>`; return; }
     if (o.interactive && !e.auto) body += `<path d="${g.d}" stroke="transparent" stroke-width="14" fill="none" data-edge="${e.id}" style="cursor:pointer"/>`;
     body += `<path d="${g.d}" fill="none" stroke="${col}" stroke-width="${sel ? 2.6 : F && sig ? 1.9 : 1.4}" ${F && !sig ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#${mk}${u})" ${e.type === 'cov' ? `marker-start="url(#${mk}${u})"` : ''} ${o.interactive && !e.auto ? `data-edge="${e.id}" style="cursor:pointer"` : ''}/>`;
     let lab = '';
     if (es) lab = o.std ? c2(es.std) : (es.free ? c2(es.est) : String(+es.est.toFixed(3)));
     else if (e.fix != null) lab = String(e.fix); else if (markers.has(e.id)) lab = '1';
-    if (lab) body += `<rect x="${(g.lx - tw(lab) / 2 - 4).toFixed(1)}" y="${(g.ly - 9).toFixed(1)}" width="${(tw(lab) + 8).toFixed(1)}" height="16" rx="3" fill="var(--sheet)" fill-opacity=".92"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4).toFixed(1)}" text-anchor="middle" style="fill:${F && !sig ? 'var(--muted)' : 'var(--fg)'};font-size:11.5px">${lab}${es && isFinite(es.p) && es.p < .05 ? `<tspan style="fill:var(--sig)">${star(es.p)}</tspan>` : ''}</text>`;
+    const fk = semK.font, lw = (tw(lab) + (es && isFinite(es.p) && es.p < .05 ? tw(star(es.p)) : 0)) * .92 * fk;
+    if (lab) body += `<rect x="${(g.lx - lw / 2 - 4).toFixed(1)}" y="${(g.ly - 9 * fk).toFixed(1)}" width="${(lw + 8).toFixed(1)}" height="${(16 * fk).toFixed(1)}" rx="3" fill="var(--sheet)" fill-opacity=".92"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 4 * fk).toFixed(1)}" text-anchor="middle" style="fill:${F && !sig ? 'var(--muted)' : 'var(--fg)'};font-size:${(11.5 * fk).toFixed(2)}px">${lab}${es && isFinite(es.p) && es.p < .05 ? `<tspan style="fill:var(--sig)">${star(es.p)}</tspan>` : ''}</text>`;
   });
   // 変数
   m.nodes.forEach(n => {
     const z = nodeSize(n), sel = o.sel === n.id || o.pending === n.id, st = sel ? 'var(--sig)' : 'var(--fg)', at = o.interactive ? `data-node="${n.id}" style="cursor:${o.tool === 'select' ? 'move' : 'pointer'}"` : '';
     body += n.kind === 'lat' ? `<ellipse cx="${n.x}" cy="${n.y}" rx="${z.rx}" ry="${z.ry}" fill="var(--accent-soft)" stroke="${st}" stroke-width="${sel ? 2.6 : 1.5}" ${at}/>` : `<rect x="${n.x - z.w / 2}" y="${n.y - z.h / 2}" width="${z.w}" height="${z.h}" rx="2" fill="var(--sheet)" stroke="${st}" stroke-width="${sel ? 2.6 : 1.4}" ${at}/>`;
-    body += `<text x="${n.x}" y="${n.y + 4.5}" text-anchor="middle" style="fill:var(--fg);font-size:12.5px;pointer-events:none">${esc(n.name)}</text>`;
+    const fs = 12.5 * semFs(n); body += `<text x="${n.x}" y="${(n.y + fs * .36).toFixed(1)}" text-anchor="middle" style="fill:var(--fg);font-size:${fs.toFixed(2)}px;pointer-events:none">${esc(n.name)}</text>`;
     if (o.interactive && o.tool === 'select' && o.sel === n.id) { const hx = n.x + (n.kind === 'lat' ? z.rx * .7071 : z.w / 2), hy = n.y + (n.kind === 'lat' ? z.ry * .7071 : z.h / 2); body += `<rect x="${(hx - 5).toFixed(1)}" y="${(hy - 5).toFixed(1)}" width="10" height="10" rx="1.5" fill="var(--sheet)" stroke="var(--sig)" stroke-width="1.6" data-resize="${n.id}" style="cursor:nwse-resize"><title>ドラッグで大きさを変える（ダブルクリックで元に戻す）</title></rect>`; }
     const r2 = F && F.r2.find(r => r.name === n.name);
     if (r2) {
       const dirs = [...m.edges.filter(e => e.from === n.id || e.to === n.id).map(e => nodes.find(x => x.id === (e.from === n.id ? e.to : e.from))), errs.find(er => er.of === n.id)].filter(Boolean).map(o => { const L = Math.hypot(o.x - n.x, o.y - n.y) || 1; return [(o.x - n.x) / L, (o.y - n.y) / L]; });
-      const hw = n.kind === 'lat' ? z.rx : z.w / 2, hh = n.kind === 'lat' ? z.ry : z.h / 2, cand = [[0, -1, 0, -hh - 5, 'middle'], [0, 1, 0, hh + 13, 'middle'], [1, 0, hw + 4, 4, 'start'], [-1, 0, -hw - 4, 4, 'end'], [.7, -.7, hw * .75, -hh - 4, 'middle'], [-.7, -.7, -hw * .75, -hh - 4, 'middle']];
+      const fk = semK.font, hw = n.kind === 'lat' ? z.rx : z.w / 2, hh = n.kind === 'lat' ? z.ry : z.h / 2, cand = [[0, -1, 0, -hh - 5, 'middle'], [0, 1, 0, hh + 13 * fk, 'middle'], [1, 0, hw + 4, 4 * fk, 'start'], [-1, 0, -hw - 4, 4 * fk, 'end'], [.7, -.7, hw * .75, -hh - 4, 'middle'], [-.7, -.7, -hw * .75, -hh - 4, 'middle']];
       const best = cand.map((c, i) => [c, Math.round(Math.max(-1, ...dirs.map(d => d[0] * c[0] + d[1] * c[1])) * 3) / 3, i]).sort((a, b) => a[1] - b[1] || a[2] - b[2])[0][0];
-      body += `<text x="${n.x + best[2]}" y="${n.y + best[3]}" text-anchor="${best[4]}" style="fill:var(--sig);font-size:10.5px">R²=${c2(r2.r2)}</text>`;
+      body += `<text x="${n.x + best[2]}" y="${n.y + best[3]}" text-anchor="${best[4]}" style="fill:var(--sig);font-size:${(10.5 * fk).toFixed(2)}px">R²=${c2(r2.r2)}</text>`;
     }
   });
   // 範囲
-  const xs = nodes.flatMap(n => { const z = nodeSize(n); return n.kind === 'err' ? [n.x - 14, n.x + 14] : n.kind === 'lat' ? [n.x - z.rx, n.x + z.rx] : [n.x - z.w / 2, n.x + z.w / 2]; }), ys = nodes.flatMap(n => [n.y - 34, n.y + 34]);
+  const xs = nodes.flatMap(n => { const z = nodeSize(n); return n.kind === 'err' ? [n.x - 14, n.x + 14] : n.kind === 'lat' ? [n.x - z.rx, n.x + z.rx] : [n.x - z.w / 2, n.x + z.w / 2]; }), ys = nodes.flatMap(n => { const z = nodeSize(n), hh = n.kind === 'err' ? 14 : n.kind === 'lat' ? z.ry : z.h / 2; return [n.y - Math.max(34, hh + 18 * semK.font), n.y + Math.max(34, hh + 18 * semK.font)]; });
   [...semAutoCov(m), ...m.edges].filter(e => e.type === 'cov').forEach(e => { const g = semEdgeGeom(m, e, nodes, cent); xs.push(g.lx - 20, g.lx + 20); ys.push(g.ly - 14, g.ly + 14); });
   let x0 = Math.min(...xs, 0) - 20, x1 = Math.max(...xs, 300) + 20, y0 = Math.min(...ys, 0) - 10, y1 = Math.max(...ys, 200) + 10;
   if (o.canvas) { x0 = Math.min(x0, 0); y0 = Math.min(y0, 0); x1 = Math.max(x1, o.canvas[0]); y1 = Math.max(y1, o.canvas[1]); }
@@ -188,6 +192,7 @@ function semRun(m) {
 function semReport(m, F, BT) {
   const std = state.opt.semStd, v = semFitVerdict(F), J = { good: '○ 良好', fair: '△ 許容', poor: '× 不十分' };
   let h = `<p class="note">最尤法・N = ${F.N}${F.dropped > 0 ? `（欠測のある ${F.dropped}人を除外）` : ''}・推定するパラメータ ${F.nparRep}個・自由度 ${F.df}。${F.conv ? '' : '<b>推定が収束しませんでした。</b>'}${F.heywood.length ? `<b>${F.heywood.map(esc).join('・')}の分散が負です（不適解）。</b>` : ''}</p>`;
+  if (m.parcels && Object.keys(m.parcels).length) h += `<p class="note">指標にパーセル（項目の平均）を使っています：${Object.entries(m.parcels).map(([l, P]) => `${esc(l)}（${P.groups.map((g, p) => `${esc(parName(l, p))} = ${g.map(esc).join('・')}`).join('、')}）`).join('；')}。</p>`;
   h += '<h4>パス図</h4>' + `<div class="semfig">${semSvg(m, { fit: F, std, fitBox: true })}</div><p class="note">図が小さいときは横にスクロールするか、「画像で表示」で拡大できます。</p>`;
   if (F.df === 0) h += '<h4>適合度指標</h4><p class="note">自由度が 0 の飽和モデル（すべての共分散を説明しきるモデル）のため、χ² は 0 で、適合度指標は意味をもちません。係数の推定値と検定だけを解釈してください。</p>';
   else h += '<h4>適合度指標</h4>' + table(['指標', '値', '判定', '目安'], [
@@ -274,7 +279,7 @@ function renderSemEditor(full) {
       <label class="hint"><input type="checkbox" id="seStd" ${state.opt.semStd ? 'checked' : ''}> 標準化推定値</label>
       <label class="hint"><input type="checkbox" id="seAuto" ${m.autoCov ? 'checked' : ''}> 外生変数どうしの共分散を自動で仮定</label>
       <label class="hint">ブートストラップ <select id="seBoot">${['0', '500', '1000', '2000', '5000'].map(v => `<option value="${v}" ${state.opt.semBoot === v ? 'selected' : ''}>${v === '0' ? 'なし' : v + ' 回'}</option>`).join('')}</select></label>
-      <button class="btn" data-se="undo">元に戻す</button><button class="btn" data-se="layout">自動で並べる</button><button class="btn" data-se="text">テキストで書く</button><button class="btn" data-se="clear">全消去</button>
+      <button class="btn" data-se="undo">元に戻す</button><button class="btn" data-se="layout">自動で並べる</button><button class="btn" data-se="text">テキストで書く</button><button class="btn" data-se="parcel">アイテム・パーセリング</button><button class="btn" data-se="clear">全消去</button>
       <button class="btn primary" data-se="run">推定する</button><button class="btn" data-se="close">閉じる</button></div>
       <div class="sembody"><div class="semtools">${TOOLS.map(([id, l, d]) => `<button class="btn" data-tool="${id}" title="${l}" aria-pressed="${SE.tool === id}"><svg viewBox="0 0 20 20" width="20" height="20">${d === 'ellipse' ? '<ellipse cx="10" cy="10" rx="8" ry="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/>' : `<path d="${d}" fill="${id === 'select' ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.6"/>`}</svg><span>${l}</span></button>`).join('')}</div>
       <div class="semcv" id="semCv"></div>
@@ -283,13 +288,16 @@ function renderSemEditor(full) {
       <h5>図形の大きさ</h5><div class="semsize">
         <label>潜在変数（楕円）<input type="range" id="seLatK" min="0.6" max="2" step="0.05" value="${m.latK || 1}"><output id="seLatKv">${Math.round((m.latK || 1) * 100)}%</output></label>
         <label>観測変数（四角）<input type="range" id="seObsK" min="0.6" max="2" step="0.05" value="${m.obsK || 1}"><output id="seObsKv">${Math.round((m.obsK || 1) * 100)}%</output></label>
-        <p class="hint">1 つだけ変えるときは、その変数を選んで右下の □ をドラッグします（□ をダブルクリックで元に戻す）。</p>
-        <button class="btn" data-se="sizereset">大きさをすべて元に戻す</button></div>
+        <label>文字<input type="range" id="seFontK" min="0.6" max="2.5" step="0.05" value="${m.fontK || 1}"><output id="seFontKv">${Math.round((m.fontK || 1) * 100)}%</output></label>
+        <label class="semchk"><input type="checkbox" id="seFontF" ${m.fontFollow === false ? '' : 'checked'}> 図形の大きさに合わせて文字も大きくする</label>
+        <p class="hint">1 つだけ変えるときは、その変数を選んで右下の □ をドラッグします（□ をダブルクリックで元に戻す）。「文字」は係数・R²・誤差の文字にも効きます。</p>
+        <button class="btn" data-se="sizereset">大きさ・文字をすべて元に戻す</button></div>
       <div id="semFit"></div><div id="semText" hidden><h5>モデルの書式（lavaan と同じ）</h5><textarea id="semTa" rows="9" spellcheck="false"></textarea><button class="btn" data-se="fromtext">テキストから図を作る</button><p class="hint">=~ 潜在変数の測定、~ 回帰（パス）、~~ 共分散。例：「抑うつ ~ ストレス」</p></div></aside></div>`;
   }
   $('#semCv').innerHTML = semSvg(m, { interactive: true, sel: SE.sel, pending: SE.pending, fit: SE.fit, std: state.opt.semStd, tool: SE.tool, canvas: [Math.max(700, ($('#semCv').clientWidth || 900) - 4), Math.max(460, ($('#semCv').clientHeight || 560) - 4)] });
   ov.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === SE.tool));
-  [['seLatK', m.latK], ['seObsK', m.obsK]].forEach(([id, v]) => { const el = $('#' + id); if (el && document.activeElement !== el) { el.value = v || 1; $('#' + id + 'v').textContent = Math.round((v || 1) * 100) + '%'; } });
+  { const f = $('#seFontF'); if (f) f.checked = m.fontFollow !== false; }
+  [['seLatK', m.latK], ['seObsK', m.obsK], ['seFontK', m.fontK]].forEach(([id, v]) => { const el = $('#' + id); if (el && document.activeElement !== el) { el.value = v || 1; $('#' + id + 'v').textContent = Math.round((v || 1) * 100) + '%'; } });
   const hint = { select: '変数をドラッグして動かす。選んだ変数の右下の □ で大きさを変える。ダブルクリックで名前（潜在変数）や固定値（矢印）を変更。Delete キーで削除。', lat: '図の空いているところをクリックすると潜在変数を置きます。', path: SE.pending ? '矢印の行き先をクリック' : '矢印の出発点（原因）をクリック', cov: SE.pending ? 'もう一方の変数をクリック' : '共分散を引く1つめの変数をクリック', del: '削除する変数・矢印をクリック' }[SE.tool];
   $('#semHint').textContent = hint;
   $('#semFit').innerHTML = SE.fit ? `<h5>適合度指標</h5><table class="out semfit">${semFitLines(SE.fit).map(([k, v]) => { const j = semFitVerdict(SE.fit)[k]; return `<tr><td>${k}</td><td style="color:${j === 'good' ? 'var(--accent)' : j === 'poor' ? 'var(--sig)' : 'var(--fg)'}">${esc(String(v))}${j === 'good' ? ' ○' : j === 'poor' ? ' ×' : j ? ' △' : ''}</td></tr>`; }).join('')}</table><p class="hint">○ 良好 △ 許容 × 不十分。${+state.opt.semBoot > 0 && !SE.boot ? 'ブートストラップが終わると結果ツリーに詳しい表が出ます。' : '結果ツリーにも詳しい表を出しました。'}</p>${SE.boot && SE.boot.ind.length ? `<h5>間接効果（ブートストラップ ${SE.boot.B}回）</h5><table class="out semfit">${SE.boot.ind.map(b => `<tr><td>${esc(b.e.from)} → ${esc(b.e.to)}</td><td>β = ${c2(b.e.std)}<br><small>BC 95%CI [${c2(b.std.bc[0])}, ${c2(b.std.bc[1])}]${b.raw.bc[0] > 0 || b.raw.bc[1] < 0 ? ' *' : ''}</small></td></tr>`).join('')}</table>` : ''}` : '';
@@ -324,18 +332,20 @@ function bindSemEditor(ov) {
     if (a === 'undo' && SE.hist.length) { state.db.semModel = JSON.parse(SE.hist.pop()); SE.sel = null; semChanged(true); }
     if (a === 'layout' && m.nodes.length) { semPush(); semAutoLayout(m); semChanged(false); }
     if (a === 'clear' && m.nodes.length && confirm('パス図をすべて消しますか？（「元に戻す」で戻せます）')) { semPush(); state.db.semModel = semKeepLook(m, { ...emptySemModel(), autoCov: m.autoCov }); SE.sel = null; semChanged(true); renderSemEditor(true); }
-    if (a === 'sizereset') { semPush(); delete m.latK; delete m.obsK; m.nodes.forEach(n => { delete n.rx; delete n.ry; delete n.w; delete n.h; }); semChanged(false); renderSemEditor(true); }
+    if (a === 'sizereset') { semPush(); delete m.latK; delete m.obsK; delete m.fontK; delete m.fontFollow; m.nodes.forEach(n => { delete n.rx; delete n.ry; delete n.w; delete n.h; }); semChanged(false); renderSemEditor(true); }
+    if (a === 'parcel') { try { parOpen(); } catch (err) { alert(err.message); } }
     if (a === 'text') { $('#semText').hidden = !$('#semText').hidden; renderSemEditor(); }
     if (a === 'fromtext') { try { const sp = S.sem.parse($('#semTa').value); semPush(); semSetK(m); const nm = semKeepLook(m, semFromSpec(sp)); nm.autoCov = m.autoCov; state.db.semModel = nm; SE.sel = null; semChanged(true); renderSemEditor(true); $('#semText').hidden = false; renderSemEditor(); } catch (err) { alert(err.message); } }
     if (a === 'run') { try { SE.fit = semRun(m); SE.boot = null; renderSemEditor(); semRunAll(m, SE.fit, BT => { SE.boot = BT; if (SE.open) renderSemEditor(); }); } catch (err) { alert(err.message); } }
   });
   ov.addEventListener('input', e => {
-    const id = e.target.id; if (id !== 'seLatK' && id !== 'seObsK') return; const m = state.db.semModel, k = id === 'seLatK' ? 'latK' : 'obsK';
+    const id = e.target.id; if (id !== 'seLatK' && id !== 'seObsK' && id !== 'seFontK') return; const m = state.db.semModel, k = { seLatK: 'latK', seObsK: 'obsK', seFontK: 'fontK' }[id];
     if (!SE.sliding) { semPush(); SE.sliding = true; }
     m[k] = +e.target.value; $('#' + id + 'v').textContent = Math.round(m[k] * 100) + '%'; renderSemEditor();
   });
   ov.addEventListener('change', e => {
-    if (e.target.id === 'seLatK' || e.target.id === 'seObsK') { SE.sliding = false; save(); return; }
+    if (e.target.id === 'seLatK' || e.target.id === 'seObsK' || e.target.id === 'seFontK') { SE.sliding = false; save(); return; }
+    if (e.target.id === 'seFontF') { semPush(); state.db.semModel.fontFollow = e.target.checked; semChanged(false); return; }
     if (e.target.id === 'seStd') { state.opt.semStd = e.target.checked; save(); renderSemEditor(); }
     if (e.target.id === 'seBoot') { state.opt.semBoot = e.target.value; save(); }
     if (e.target.id === 'seAuto') { state.db.semModel.autoCov = e.target.checked; semChanged(true); }
@@ -384,7 +394,7 @@ function bindSemEditor(ov) {
   ov.addEventListener('dragover', e => { if (e.target.closest('#semCv')) e.preventDefault(); });
   ov.addEventListener('drop', e => { if (!e.target.closest('#semCv')) return; e.preventDefault(); const name = e.dataTransfer.getData('text/plain'); if (name) semAddVar(name, svgPt(e)); });
   document.addEventListener('keydown', e => {
-    if (!SE.open || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return; const m = state.db.semModel;
+    if (!SE.open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || ($('#parDlg') && !$('#parDlg').hidden)) return; const m = state.db.semModel;
     if ((e.key === 'Delete' || e.key === 'Backspace') && SE.sel) { e.preventDefault(); semPush(); m.nodes = m.nodes.filter(n => n.id !== SE.sel); m.edges = m.edges.filter(q => q.id !== SE.sel && q.from !== SE.sel && q.to !== SE.sel); SE.sel = null; semChanged(true); renderSemEditor(true); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && SE.hist.length) { e.preventDefault(); state.db.semModel = JSON.parse(SE.hist.pop()); SE.sel = null; semChanged(true); renderSemEditor(true); }
     if (e.key === 'Escape') { if (SE.pending) { SE.pending = null; renderSemEditor(); } else semClose(); }
