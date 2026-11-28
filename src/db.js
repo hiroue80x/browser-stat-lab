@@ -86,6 +86,21 @@ function isMiss(c, v, ms) { // 「9, 99」のような個別の値と「90~99」
 function rawCol(j) { const v = rawColBase(j), m = typeof filterMask === 'function' ? filterMask() : null; return m ? v.map((x, i) => m[i] ? x : '') : v; } // ケースの選択中は、選ばれていない人を欠損に
 function rawColBase(j) { const c = state.db.cols[j], ms = missSet(c); return state.db.rows.map(r => { const v = String(r[j] ?? '').trim(); return isMiss(c, v, ms) ? '' : v; }); }
 function autoType(v) { v = v.filter(x => x !== ''); if (!v.length) return 'empty'; return v.every(x => !isNaN(toNum(x))) ? 'num' : 'cat'; }
+function nonNumInfo(j) { // 数字として読めない値（欠損値の指定を除く）を数える
+  const cnt = new Map(); let nNum = 0;
+  rawColBase(j).forEach(v => { if (v === '') return; if (isFinite(toNum(v))) nNum++; else cnt.set(v, (cnt.get(v) || 0) + 1); });
+  const bad = [...cnt.entries()].sort((a, b) => b[1] - a[1]), nBad = bad.reduce((a, b) => a + b[1], 0);
+  return { bad, nBad, nNum, tokenOk: bad.every(([v]) => !/[\s,、，~]/.test(v)) };
+}
+function nonNumSuspect(j) { // 数値のつもりの列に、数字でない値がまじっていそうか
+  const c = state.db.cols[j]; if (c.measure === 'nominal') return null; const I = nonNumInfo(j); if (!I.nBad || !I.nNum) return null;
+  return c.measure === 'scale' || c.measure === 'ordinal' || (I.bad.length <= 5 && I.nNum >= I.nBad * 4) ? I : null;
+}
+function nonNumText(I, max = 4) { return I.bad.slice(0, max).map(([v, k]) => `「${esc(v)}」${k} 件`).join('、') + (I.bad.length > max ? ` ほか ${I.bad.length - max} 種類` : ''); }
+function nonNumToMissing(js) { // 数字でない値を各列の欠損値に足す
+  let done = 0; js.forEach(j => { const I = nonNumSuspect(j); if (!I || !I.tokenOk) return; const c = state.db.cols[j], cur = missSet(c); I.bad.forEach(([v]) => { if (!cur.includes(v)) cur.push(v); }); c.missing = cur.join(', '); done++; });
+  return done;
+}
 function colType(j) { const t = autoType(rawCol(j)), m = state.db.cols[j].measure; if (t === 'empty') return t; return m === 'nominal' ? 'cat' : t; }
 const LABEL_RANK = {};
 function vlMap(c) { const mp = {}; (c.values || []).forEach(([k, l], i) => { if (String(k).trim() !== '' && String(l).trim() !== '') { const key = String(k).trim(); mp[key] = String(l).trim(); LABEL_RANK[mp[key]] = isFinite(toNum(key)) ? toNum(key) : 1e6 + i; } }); return mp; }
@@ -195,7 +210,8 @@ function renderVarView() {
       <td><select data-vm="${j}">${MEASURES.map(([v, l]) => `<option value="${v}" ${(c.measure || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td class="vsum"><button class="btn" data-vact="edit" data-j="${j}">${vals.length ? '編集' : '設定'}</button> <span>${sum || '<span class="hint">なし</span>'}</span></td>
       <td><input class="vmiss" data-vmiss="${j}" value="${esc(c.missing || '')}" placeholder="例：99"></td>
-      <td><span class="tbadge ${t}">${{ num: '数', cat: '類', empty: '−' }[t]}</span></td><td class="total">${nValid}</td></tr>`;
+      <td><span class="tbadge ${t}">${{ num: '数', cat: '類', empty: '−' }[t]}</span>${t === 'cat' && nonNumSuspect(j) ? ' <b style="color:var(--sig)" title="数字でない値があります">⚠</b>' : ''}</td><td class="total">${nValid}</td></tr>`;
+    { const I = t === 'cat' ? nonNumSuspect(j) : null; if (I) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="warn" style="margin:2px 0">「${esc(c.name)}」は数字の列のようですが、<b>数字でない値</b>（${nonNumText(I)}）があるため「類」になっています。${I.tokenOk ? `無回答の印なら <button class="btn" data-vact="nonnum" data-j="${j}">欠損値にする</button> を押すと「数」になります。打ち間違いなら、データビューで直してください。` : 'データビューで値を直してください（空白やカンマを含む値は欠損値に指定できません）。'}</p></td></tr>`; }
     if (vvOpen === j) {
       const lv = levelsOf(raw).slice(0, 40);
       h += `<tr class="vvedit"><td></td><td colspan="7"><div class="vvbox"><b>値ラベル：${esc(c.name)}</b>
@@ -215,6 +231,7 @@ $('#sheetBody').addEventListener('click', e => {
   if (state.fmt !== 'db') return;
   const vt = e.target.closest('[data-view]'); if (vt) { state.opt.dbView = vt.dataset.view; vvOpen = -1; save(); renderSheet(); return; }
   const b = e.target.closest('[data-vact]'); if (!b) return; const act = b.dataset.vact;
+  if (act === 'nonnum') { nonNumToMissing([+b.dataset.j]); varViewRefresh(true); return; }
   if (act === 'opensav') { $('#savFile').click(); return; }
   if (act === 'opencb') { $('#cbFile').click(); return; }
   if (act === 'rlink') { rlinkExport(e.target.closest('button')); return; }
@@ -345,7 +362,8 @@ function renderDbPanel(keep) {
         <div class="dlcol"><div class="dlhead">データの項目 <small>（${left.length}）</small><input class="dlfilter" id="faFilter" placeholder="名前・内容で絞り込み" value="${esc(FAUI.filter)}"></div><div class="dlist" data-side="L">${left.map(c => item(c, 'L')).join('') || '<div class="dlempty">すべて右に入っています</div>'}</div></div>
         <div class="dlbtns"><button class="btn primary" data-act="faadd" title="左で選んだ項目を右へ">入れる →</button><button class="btn" data-act="farem" title="右で選んだ項目を左へ">← 外す</button><button class="btn" data-act="faall" title="左に見えている項目をすべて右へ">すべて →</button><button class="btn" data-act="fanone">← すべて</button></div>
         <div class="dlcol"><div class="dlhead">${key === 'cl' ? 'クラスター分析に使う変数' : key === 'ag' ? '評定者（列）' : '因子分析に入れる項目'} <small>（${right.length} ${key === 'cl' ? '変数' : key === 'ag' ? '人' : '項目'}）</small></div><div class="dlist" data-side="R">${right.map(c => item(c, 'R')).join('') || `<div class="dlempty">左から${key === 'cl' ? '変数を入れてください（2 変数以上）' : key === 'ag' ? '評定者の列を入れてください（2 人以上）' : '項目を入れてください（3 項目以上）'}</div>`}</div></div>
-      </div><p class="hint" style="margin:4px 0 0">クリックで選択（Shift で範囲、⌘ / Ctrl で追加選択）、ダブルクリックですぐ移動します。${nStr && key !== 'ag' ? `文字の列（${nStr}）は表示していません。` : ''}</p>`; },
+      </div><p class="hint" style="margin:4px 0 0">クリックで選択（Shift で範囲、⌘ / Ctrl で追加選択）、ダブルクリックですぐ移動します。${nStr && key !== 'ag' ? `文字の列（${nStr}）は表示していません。` : ''}</p>${key === 'ag' ? '' : (() => { const sus = cols.filter(c => c.t === 'cat').map(c => [c.j, nonNumSuspect(c.j)]).filter(x => x[1]); if (!sus.length) return ''; const ok = sus.filter(x => x[1].tokenOk);
+        return `<p class="warn" style="margin:6px 0 0">数字でない値がまじっているため、左に出ていない列があります：${sus.slice(0, 6).map(([j, I]) => `<b>${esc(d.cols[j].name || `列${j + 1}`)}</b>（${nonNumText(I, 2)}）`).join('、')}${sus.length > 6 ? ` ほか ${sus.length - 6} 列` : ''}。${ok.length ? `無回答の印なら <button class="btn" data-act="nonnummiss">${ok.length} 列のこれらの値を欠損値にする</button>（変数ビューの「欠損値」に入ります）。` : ''}${ok.length < sus.length ? '空白やカンマを含む値は、データビューで直してください。' : ''}</p>`; })()}`; },
     rc: () => `<div class="chipset"><span>検査値の列（複数選ぶと比べます）</span>${chips('rc', R.roc, c => c.t === 'num' && c.j !== R.bin)}</div>`
   };
   const OPT = {
@@ -680,6 +698,7 @@ async function figAction(btn) {
 $('#panelBody').addEventListener('click', e => {
   const tb = e.target.closest('[data-tab]'); if (tb && state.fmt === 'db') { state.opt.dbTab = tb.dataset.tab; save(); renderDbPanel(); return; }
   const act = e.target.dataset.act; if (state.fmt !== 'db' || !act) return; const R = state.db.roles;
+  if (act === 'nonnummiss') { const js = state.db.cols.map((_, j) => j).filter(j => colType(j) === 'cat' && nonNumSuspect(j)), n = nonNumToMissing(js); save(); renderSheet(); renderDbPanel(true); $('#msg').textContent = `${n} 列で、数字でない値を欠損値に指定しました。`; return; }
   if (act === 'faadd') return faMove([...FAUI.L], true);
   if (act === 'farem') return faMove([...FAUI.R], false);
   if (act === 'faall') return faMove([...document.querySelectorAll('.dlist[data-side="L"] .dli')].filter(x => x.style.display !== 'none').map(x => +x.dataset.fai), true);
