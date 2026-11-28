@@ -448,6 +448,93 @@ const S = (() => {
   }
   function corMatrix(cols) { const p = cols.length; const z = cols.map(c => { const m = mean(c), s = sd(c); return c.map(v => (v - m) / s); }), n = cols[0].length; return z.map(a => z.map(b => a.reduce((s, v, i) => s + v * b[i], 0) / (n - 1))); }
   function logDet(R) { return sum(eigSym(R).values.map(v => Math.log(Math.max(v, 1e-300)))); }
+  // ===== ポリコリック相関（psych::polychoric と同じ：全項目共通の閾値、2 段階推定、R の optimize と同じ Brent 法） =====
+  function bvnu(dh, dk, r) { // P(X > dh, Y > dk)、Genz の BVNU
+    if (dh === Infinity || dk === Infinity) return 0;
+    if (dh === -Infinity) return dk === -Infinity ? 1 : pnorm(-dk);
+    if (dk === -Infinity) return pnorm(-dh);
+    if (r === 0) return pnorm(-dh) * pnorm(-dk);
+    const tp = 2 * Math.PI; let h = dh, k = dk, hk = h * k, bvn = 0, w, x;
+    if (Math.abs(r) < .3) { w = [.1713244923791705, .3607615730481384, .4679139345726904]; x = [.9324695142031522, .6612093864662647, .2386191860831970]; }
+    else if (Math.abs(r) < .75) { w = [.04717533638651177, .1069393259953183, .1600783285433464, .2031674267230659, .2334925365383547, .2491470458134029]; x = [.9815606342467191, .9041172563704750, .7699026741943050, .5873179542866171, .3678314989981802, .1252334085114692]; }
+    else { w = [.01761400713915212, .04060142980038694, .06267204833410906, .08327674157670475, .1019301198172404, .1181945319615184, .1316886384491766, .1420961093183821, .1491729864726037, .1527533871307259]; x = [.9931285991850949, .9639719272779138, .9122344282513259, .8391169718222188, .7463319064601508, .6360536807265150, .5108670019508271, .3737060887154196, .2277858511416451, .07652652113349733]; }
+    if (Math.abs(r) < .925) {
+      const hs = (h * h + k * k) / 2, asr = Math.asin(r);
+      for (let i = 0; i < w.length; i++) for (const s of [-1, 1]) { const sn = Math.sin(asr * (s * x[i] + 1) / 2); bvn += w[i] * Math.exp((sn * hk - hs) / (1 - sn * sn)); }
+      bvn = bvn * asr / (2 * tp) + pnorm(-h) * pnorm(-k);
+    } else {
+      if (r < 0) { k = -k; hk = -hk; }
+      if (Math.abs(r) < 1) {
+        const as = (1 - r) * (1 + r); let a = Math.sqrt(as); const bs = (h - k) ** 2, c = (4 - hk) / 8, d = (12 - hk) / 16;
+        bvn = a * Math.exp(-(bs / as + hk) / 2) * (1 - c * (bs - as) * (1 - d * bs / 5) / 3 + c * d * as * as / 5);
+        if (hk > -160) { const b = Math.sqrt(bs); bvn -= Math.exp(-hk / 2) * Math.sqrt(tp) * pnorm(-b / a) * b * (1 - c * bs * (1 - d * bs / 5) / 3); }
+        a /= 2;
+        for (let i = 0; i < w.length; i++) for (const s of [-1, 1]) { const xs = (a * (s * x[i] + 1)) ** 2, rs = Math.sqrt(1 - xs); bvn += a * w[i] * (Math.exp(-bs / (2 * xs) - hk / (1 + rs)) / rs - Math.exp(-(bs / xs + hk) / 2) * (1 + c * xs * (1 + d * xs))); }
+        bvn = -bvn / tp;
+      }
+      if (r > 0) bvn += pnorm(-Math.max(h, k));
+      else { bvn = -bvn; if (k > h) bvn += h < 0 ? pnorm(k) - pnorm(h) : pnorm(-h) - pnorm(-k); }
+    }
+    return Math.max(0, Math.min(1, bvn));
+  }
+  function fminBrent(f, ax, bx, tol = Math.pow(2.220446049250313e-16, .25)) { // R の optimize（Brent_fmin）と同じ
+    const c = (3 - Math.sqrt(5)) * .5, eps = Math.sqrt(2.220446049250313e-16), tol3 = tol / 3;
+    let a = ax, b = bx, v = a + c * (b - a), w = v, x = v, d = 0, e = 0, fx = f(x), fv = fx, fw = fx;
+    for (let it = 0; it < 200; it++) {
+      const xm = (a + b) * .5, tol1 = eps * Math.abs(x) + tol3, t2 = tol1 * 2;
+      if (Math.abs(x - xm) <= t2 - (b - a) * .5) break;
+      let p = 0, q = 0, r = 0;
+      if (Math.abs(e) > tol1) { r = (x - w) * (fx - fv); q = (x - v) * (fx - fw); p = (x - v) * q - (x - w) * r; q = (q - r) * 2; if (q > 0) p = -p; else q = -q; r = e; e = d; }
+      if (Math.abs(p) >= Math.abs(.5 * q * r) || p <= q * (a - x) || p >= q * (b - x)) { e = x < xm ? b - x : a - x; d = c * e; }
+      else { d = p / q; const u = x + d; if (u - a < t2 || b - u < t2) { d = tol1; if (x >= xm) d = -d; } }
+      const u = Math.abs(d) >= tol1 ? x + d : d > 0 ? x + tol1 : x - tol1, fu = f(u);
+      if (fu <= fx) { if (u < x) b = x; else a = x; v = w; fv = fw; w = x; fw = fx; x = u; fx = fu; }
+      else { if (u < x) a = u; else b = u; if (fu <= fw || w === x) { v = w; fv = fw; w = u; fw = fu; } else if (fu <= fv || v === x || v === w) { v = u; fv = fu; } }
+    }
+    return x;
+  }
+  function polyPair(xi, yi, tx, ty, nv, correct = .5) { // xi, yi: 0..nv-1 の整数。tx を null にすると、その組の表から閾値を求める（psych の global = FALSE）
+    const n = xi.length; let tab = Array.from({ length: nv }, () => new Array(nv).fill(0));
+    for (let i = 0; i < n; i++) tab[xi[i]][yi[i]] += 1 / n;
+    let fixed = 0;
+    if (!tx) {
+      const zr = tab.map(r => r.every(v => !v)), zc = tab[0].map((_, j) => tab.every(r => !r[j]));
+      tab = tab.filter((_, i) => !zr[i]).map(r => r.filter((_, j) => !zc[j]));
+      if (tab.length < 2 || tab[0].length < 2) return { rho: NaN, fixed: 0 };
+      if (correct > 0 && tab.some(r => r.some(v => !v))) { tab = tab.map(r => r.map(v => { if (v) return v; fixed++; return correct / n; })); }
+      const cut = m => { let c = 0; return m.slice(0, -1).map(v => { c += v; return c >= 1 ? Infinity : -qn(c); }); };
+      tx = cut(tab.map(r => sum(r))); ty = cut(tab[0].map((_, j) => sum(tab.map(r => r[j]))));
+    }
+    const rc = [-Infinity, ...tx, Infinity], cc = [-Infinity, ...ty, Infinity], nr = rc.length - 1, nc = cc.length - 1;
+    const obj = rho => { let s = 0; const G = rc.map(a => cc.map(b => bvnu(-a, -b, rho)));
+      for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) { if (!tab[i][j]) continue; const P = G[i + 1][j + 1] - G[i][j + 1] - G[i + 1][j] + G[i][j]; if (P > 0) s -= tab[i][j] * Math.log(P); }
+      return s; };
+    return { rho: fminBrent(obj, -1, 1), fixed };
+  }
+  function corSmooth(R) { // psych::cor.smooth と同じ
+    const p = R.length, E = eigSym(R);
+    if (Math.min(...E.values) >= 2.220446049250313e-16) return { R, smoothed: false };
+    let ev = E.values.map(v => v < 1e-12 ? 100 * 1e-12 : v); const tot = sum(ev); ev = ev.map(v => v * p / tot);
+    const M = R.map((_, i) => R.map((_, j) => sum(ev.map((l, q) => l * E.vectors[q][i] * E.vectors[q][j]))));
+    return { R: M.map((r, i) => r.map((v, j) => v / Math.sqrt(M[i][i] * M[j][j]))), smoothed: true, minEig: E.values[p - 1] };
+  }
+  function polychoric(cols, maxCat = 8, correct = .5) { // cols: 欠測なしの整数データ。psych::polychoric の既定（max.cat = 8, correct = .5）と同じ
+    const p = cols.length, n = cols[0].length, all = cols.flat();
+    if (all.some(v => v !== Math.round(v))) throw new Error('ポリコリック相関は、値が整数（1, 2, 3 … のような段階）の項目にだけ使えます。');
+    const mn = Math.min(...all), mx = Math.max(...all), nv = mx - mn + 1;
+    if (nv > maxCat) throw new Error(`値の段階が ${nv} あります（${mn}〜${mx}）。ポリコリック相関は ${maxCat} 段階までの項目に使います（psych と同じ上限）。段階の多い項目は通常の（ピアソンの）相関で十分です。`);
+    if (nv < 2) throw new Error('すべての値が同じです。');
+    const X = cols.map(c => c.map(v => v - mn)), xmax = X.map(c => Math.max(...c)), global = Math.min(...xmax) === Math.max(...xmax); // 項目ごとに最大値が違えば、psych と同じく組ごとに閾値を求める
+    const tau = X.map(c => { const f = new Array(nv).fill(0); c.forEach(v => f[v]++); let cum = 0; return f.slice(0, nv - 1).map(v => { cum += v / n; return cum <= 0 ? -Infinity : cum >= 1 ? Infinity : -qn(cum); }); });
+    const R = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => +(i === j))); let fixed = 0;
+    for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) {
+      const r = global ? polyPair(X[i], X[j], tau[i], tau[j], nv) : polyPair(X[i], X[j], null, null, nv, correct);
+      if (!isFinite(r.rho)) throw new Error('ポリコリック相関を計算できない組み合わせがあります（回答が 1 種類しかない項目がないか確認してください）。');
+      R[i][j] = R[j][i] = r.rho; fixed += r.fixed;
+    }
+    const sm = corSmooth(R);
+    return { R: sm.R, raw: R, smoothed: sm.smoothed, tau, nv, min: mn, max: mx, global, fixed, pairs: p * (p - 1) / 2 };
+  }
   function kmo(R) {
     const p = R.length, inv = inverse(R); let r2 = 0, q2 = 0; const msa = [];
     for (let i = 0; i < p; i++) { let ri = 0, qi = 0; for (let j = 0; j < p; j++) if (i !== j) { const q = -inv[i][j] / Math.sqrt(inv[i][i] * inv[j][j]); ri += R[i][j] ** 2; qi += q * q; } msa.push(ri / (ri + qi)); r2 += ri; q2 += qi; }
@@ -637,8 +724,8 @@ const S = (() => {
     if (!map) throw new Error('この回転法は使えません。');
     return gpRotate(L, map[0], !!map[1], normalize);
   }
-  function factorAnalysis(cols, k, method, rotation, normalize = true) {
-    const R = corMatrix(cols), n = cols[0].length, E = extract(R, k, method, n);
+  function factorAnalysis(cols, k, method, rotation, normalize = true, Rin = null) {
+    const R = Rin || corMatrix(cols), n = cols[0].length, E = extract(R, k, method, n);
     const rr = rotate(E.L.map(r => [...r]), rotation, normalize); let P = rr.L, Phi = rr.Phi;
     for (let j = 0; j < k; j++) if (sum(P.map(r => r[j])) < 0) { P.forEach(r => r[j] = -r[j]); if (Phi) { Phi.forEach((r, q) => { if (q !== j) { r[j] = -r[j]; Phi[j][q] = -Phi[j][q]; } }); } }
     const S = Phi ? matMul(P, Phi) : null, ssl = P[0].map((_, j) => sum(P.map(r => r[j] ** 2)));
@@ -763,7 +850,7 @@ const S = (() => {
     return { n, events: sum(ev), coef, ll: st.ll, ll0, LR, df: p, pLR: pchiU(LR, p), wald, pWald: pchiU(wald, p), score: score0, pScore: pchiU(score0, p), C: (conc + tie / 2) / (conc + disc + tie), iter: it, conv, mu, b, H0, V };
   }
 
-  return { kaplanMeier, survDiff, cox, logistic, roc, rocCompare, binomCI, qbeta, EXTRACTIONS, ROTATIONS, rotate, gpRotate, extract, eigSym, corMatrix, kmo, bartlettSph, parallel, factorAnalysis, varimax, promax, ols, anova2, mixedAnova, multiReg, uniq, lgamma, pnorm, dnorm, pt2, ptU, pfU, pchiU, pnU, qt, qn, qf, qchi, ptukey, ptukeyU, ibeta,
+  return { kaplanMeier, survDiff, cox, logistic, roc, rocCompare, binomCI, qbeta, EXTRACTIONS, ROTATIONS, rotate, gpRotate, extract, eigSym, corMatrix, kmo, bartlettSph, parallel, factorAnalysis, polychoric, corSmooth, bvnu, varimax, promax, ols, anova2, mixedAnova, multiReg, uniq, lgamma, pnorm, dnorm, pt2, ptU, pfU, pchiU, pnU, qt, qn, qf, qchi, ptukey, ptukeyU, ibeta,
     num, sum, mean, sd, vari, quantile, ranks, describe, tTest, mannWhitney, pairedT, wilcoxon, signTest,
     anova1, bartlett, levene, kruskal, postHoc, holm, padjust, gamesHowell, rmAnova, friedman, cronbach, pearson, spearman, kendall, regression, chiTable, fisher2x2, pairs };
 })();

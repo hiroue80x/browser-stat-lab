@@ -74,7 +74,7 @@ if (state.db.roles.bin == null) state.db.roles.bin = -1;
 state.opt.orUnit = state.opt.orUnit || 'unit'; state.opt.crit = state.opt.crit || 'aic';
 state.db.roles.fa = state.db.roles.fa || []; state.db.roles.roc = state.db.roles.roc || []; state.db.roles.cov = state.db.roles.cov || [];
 state.opt.dbTab = state.opt.dbTab || 'basic'; state.opt.rocDir = state.opt.rocDir || 'auto'; state.opt.rocCut = state.opt.rocCut || 'youden';
-state.opt.nf = state.opt.nf || 'auto'; if (state.opt.knorm == null) state.opt.knorm = true; state.opt.ext = state.opt.ext || 'ml'; state.opt.rot = state.opt.rot || 'promax';
+state.opt.nf = state.opt.nf || 'auto'; if (state.opt.knorm == null) state.opt.knorm = true; state.opt.ext = state.opt.ext || 'ml'; state.opt.rot = state.opt.rot || 'promax'; state.opt.fcor = state.opt.fcor || 'pearson';
 state.opt.err = state.opt.err || 'ci'; if (state.opt.raw == null) state.opt.raw = true; state.opt.method = state.opt.method || 'enter'; state.opt.param = state.opt.param || 'param';
 
 // ----- 変数の定義（SPSS の変数ビューと同じ：名前・ラベル・値ラベル・尺度・欠損値） -----
@@ -280,7 +280,7 @@ const DBTABS = [
     runs: [['med', '媒介分析', 'X → M → Y の間接効果（ブートストラップ）'], ['mod', '調整分析（交互作用）', 'X の効果が W によって変わるか（単純傾斜・J-N 法）'], ['serial', '系列媒介分析', 'X → M1 → M2 → Y（PROCESS モデル 6、M は 2〜3 個）'], ['modmed', '調整媒介分析', '媒介の強さが W によって変わるか（PROCESS モデル 7・8・14）']] },
   { id: 'lmguide', label: '線形モデルで理解する', note: '分散分析・t 検定・共分散分析が「回帰分析（一般線形モデル）」の一種であること、目的変数が 2 値や回数のときの「一般化線形モデル」を、実際のデータで確かめながら学ぶタブです。', roles: ['y', 'a', 'b'], chips: ['rv'], opts: ['coding', 'family'], extra: () => lmGuideHelp(),
     runs: [['lmAnova', '分散分析を回帰分析として見る', 'ダミー変数・デザイン行列・F の一致・平方和の分解'], ['glmFam', '一般化線形モデル', '2 値（ロジスティック）・回数（ポアソン）と分散分析の比較']] },
-  { id: 'fa', label: '因子分析', note: '項目の背後にある共通因子を探ります。因子数は平行分析で自動的に決めることもできます。', roles: [], chips: ['rf'], opts: ['nf', 'ext', 'rot', 'kn'],
+  { id: 'fa', label: '因子分析', note: '項目の背後にある共通因子を探ります。因子数は平行分析で自動的に決めることもできます。', roles: [], chips: ['rf'], opts: ['fcor', 'nf', 'ext', 'rot', 'kn'],
     runs: [['fa', '因子分析', '項目の背後にある因子を探る（平行分析つき）']] },
   { id: 'cluster', label: 'クラスター分析', note: '回答のパターンが似ている人どうしをグループ（クラスター）に分けます。左のリストから分類に使う変数を右へ移してください。', roles: [], chips: ['rf'], opts: ['clMethod', 'clWard', 'clDist', 'clP', 'clK', 'clZ'], extra: () => clMethodGuide(false),
     runs: [['hclust', '階層的クラスター分析', 'デンドログラム・クラスター数の目安・プロフィール'], ['kmeans', '非階層的（k-means 法）', 'Ward 法の結果を初期値に・シルエット図']] },
@@ -373,6 +373,7 @@ function renderDbPanel(keep) {
     method: '<label>変数選択 <select id="oMethod"><option value="enter">強制投入法</option><option value="step">ステップワイズ法（限界 p = .15）</option><option value="all">総当たり法（重回帰のみ）</option></select></label>',
     crit: '<label>総当たり法の基準 <select id="oCrit"><option value="aic">AIC</option><option value="bic">BIC</option><option value="adjr2">調整済み R²</option><option value="cp">Mallows の Cp</option></select></label>',
     or: `<label>${tid === 'surv' ? 'ハザード比' : 'オッズ比'}の単位 <select id="oOr"><option value="unit">1 単位あたり</option><option value="sd">1 SD あたり</option></select></label>`,
+    fcor: '<label>相関 <select id="oFc"><option value="pearson">ピアソン（通常）</option><option value="poly">ポリコリック（順序尺度）</option><option value="cmp">ポリコリックと通常を比較</option></select></label>',
     nf: `<label>因子数 <select id="oNf"><option value="auto">自動（平行分析）</option>${[1, 2, 3, 4, 5, 6, 7, 8].map(k => `<option value="${k}">${k}</option>`).join('')}</select></label>`,
     ext: `<label>因子抽出 <select id="oExt">${Object.entries(S.EXTRACTIONS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>`,
     rot: `<label>回転 <select id="oRot"><option value="none">回転なし</option>${[['obl', '斜交回転（因子間の相関を認める）'], ['orth', '直交回転（因子は無相関）']].map(([t, g]) => `<optgroup label="${g}">${Object.entries(S.ROTATIONS).filter(([, r]) => r[1] === t).map(([v, r]) => `<option value="${v}">${r[0]}</option>`).join('')}</optgroup>`).join('')}</select></label>`,
@@ -392,7 +393,7 @@ function renderDbPanel(keep) {
     <div class="runs" style="margin-top:10px">${T.runs.map(r => `<button class="btn run" data-run="${r[0]}"><b>${r[1]}</b><span>${r[2]}</span></button>`).join('')}</div>
     <div class="opts">${T.opts.map(k => OPT[k]).join('')}</div><div class="msg" id="msg">${esc(msg)}</div>`;
   const setV = (id, v) => { const el = $('#' + id); if (el) el.value = v; };
-  setV('oErr', state.opt.err); setV('oSy', state.opt.survY); setV('oCrit', state.opt.crit); setV('oOr', state.opt.orUnit); setV('oNf', state.opt.nf); setV('oExt', state.opt.ext); setV('oRot', state.opt.rot); setV('oMethod', state.opt.method); setV('oParam', state.opt.param); setV('oDir', state.opt.rocDir); setV('oCut', state.opt.rocCut);
+  setV('oErr', state.opt.err); setV('oSy', state.opt.survY); setV('oCrit', state.opt.crit); setV('oOr', state.opt.orUnit); setV('oNf', state.opt.nf); setV('oFc', state.opt.fcor); setV('oExt', state.opt.ext); setV('oRot', state.opt.rot); setV('oMethod', state.opt.method); setV('oParam', state.opt.param); setV('oDir', state.opt.rocDir); setV('oCut', state.opt.rocCut);
 }
 $('#panelBody').addEventListener('change', e => {
   if (state.fmt !== 'db') return; const el = e.target, R = state.db.roles;
@@ -408,7 +409,7 @@ $('#panelBody').addEventListener('change', e => {
   if (el.id === 'oMc') { state.opt.mc = el.value; save(); renderDbPanel(true); return; } if (el.id === 'oKwMc') { state.opt.kwmc = el.value; save(); renderDbPanel(true); return; } if (el.id === 'oDunCtl') state.opt.dunCtl = el.value;
   if (el.id === 'oSemStd') state.opt.semStd = el.checked; if (el.id === 'oSemMi') state.opt.semMi = el.checked; if (el.id === 'oSemBoot') state.opt.semBoot = el.value;
   if (el.id === 'oDir') state.opt.rocDir = el.value; if (el.id === 'oCut') state.opt.rocCut = el.value;
-  if (el.id === 'oNf') state.opt.nf = el.value; if (el.id === 'oExt') state.opt.ext = el.value; if (el.id === 'oRot') state.opt.rot = el.value;
+  if (el.id === 'oNf') state.opt.nf = el.value; if (el.id === 'oFc') state.opt.fcor = el.value; if (el.id === 'oExt') state.opt.ext = el.value; if (el.id === 'oRot') state.opt.rot = el.value;
   if (el.id === 'rMx') { R.mx = +el.value; save(); renderDbPanel(true); return; } if (el.id === 'rMw') R.mw = +el.value;
   if (el.dataset.mm != null) { const j = +el.dataset.mm; R.mm = el.checked ? [...(R.mm || []), j] : (R.mm || []).filter(v => v !== j); save(); renderDbPanel(true); return; }
   if (el.dataset.mcov != null) { const j = +el.dataset.mcov; R.mcov = el.checked ? [...(R.mcov || []), j] : (R.mcov || []).filter(v => v !== j); }
@@ -727,25 +728,71 @@ function factorPlot(names, P, assign, a, b) {
   return s + '</svg>';
 }
 let FA_LAST_REL = null;
+function faPolyInfo(PC, Rp, names, n) { // ポリコリック相関の説明と行列
+  const p = names.length, off = (R, f) => { const a = []; for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) a.push(f(R[i][j], i, j)); return a; };
+  const mP = S.mean(off(PC.R, v => Math.abs(v))), mR = S.mean(off(Rp, v => Math.abs(v))), dmax = Math.max(...off(PC.R, (v, i, j) => Math.abs(v - Rp[i][j])));
+  let h = '<h4>ポリコリック相関</h4>' + `<p class="note">各項目の回答（${PC.min}〜${PC.max} の ${PC.nv} 段階）の背後に連続的な正規分布の変数を仮定し、その変数どうしの相関を推定しました（psych::polychoric と同じ 2 段階推定）。` +
+    (PC.global ? 'どの項目も同じ段階数なので、項目ごとの閾値を全員の回答から一度だけ求めています。' : '項目によって使われている段階の数が違うため、psych と同じく、2 項目の組ごとに閾値を求め直しています。') + '</p>';
+  h += table(['', 'ポリコリック', 'ピアソン（通常）'], [['相関の絶対値の平均', fmt(mP), fmt(mR)], ['いちばん大きい差（ポリコリック − ピアソン）', { v: fmt(dmax), cls: '' }, '']]);
+  if (PC.fixed) h += `<p class="warn">度数が 0 のセルが ${PC.fixed} 個ありました。psych と同じく 0.5 人分の補正をして計算しています。人数に対して段階が多すぎる場合は、隣の段階をまとめることも検討してください。</p>`;
+  if (PC.smoothed) h += '<p class="warn">ポリコリック相関行列が正定値でなかった（固有値に 0 以下のものがあった）ため、psych::cor.smooth と同じ方法で補正してから因子分析しました。人数が少ないか、ほとんど同じ回答の項目がある可能性があります。</p>';
+  if (n < 200) h += `<p class="note">ポリコリック相関は人数が少ないと不安定になりやすい推定です（n = ${n}）。目安として 200 人以上あると安心です。</p>`;
+  h += '<details><summary class="note" style="cursor:pointer">ポリコリック相関行列を表示（右上：ピアソン、左下：ポリコリック）</summary>' + table(['', ...names.map(esc)], names.map((nm0, i) => [esc(nm0), ...names.map((_, j) => i === j ? '—' : j < i ? { v: f2(PC.R[i][j]), cls: 'sig' } : f2(Rp[i][j]))])) + '</details>';
+  h += '<p class="note">平行分析の基準線は、通常の相関と同じく正規乱数データの固有値（95%点）です。</p>';
+  return h;
+}
+function faCompare(cols, k, F, P, names, order, assign, Rp) { // ポリコリック（F）と通常（ピアソン）を同じ設定で比べる
+  const G = S.factorAnalysis(cols, k, state.opt.ext, k > 1 ? state.opt.rot : 'none', state.opt.knorm, Rp);
+  const cong = (a, b) => S.sum(a.map((v, i) => v * b[i])) / Math.sqrt(S.sum(a.map(v => v * v)) * S.sum(b.map(v => v * v)));
+  const colP = j => P.map(r => r[j]), colG = j => G.P.map(r => r[j]);
+  // 因子の順番と向きを合わせる（タッカーの一致係数の絶対値の合計が最大になる並び）
+  const perms = a => a.length <= 1 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [x, ...r]));
+  let best = null; const C = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => cong(colP(i), colG(j))));
+  if (k <= 7) perms([...Array(k).keys()]).forEach(pm => { const s = S.sum(pm.map((j, i) => Math.abs(C[i][j]))); if (!best || s > best.s) best = { s, pm }; });
+  else { const used = new Set(), pm = []; for (let i = 0; i < k; i++) { let bj = -1; for (let j = 0; j < k; j++) if (!used.has(j) && (bj < 0 || Math.abs(C[i][j]) > Math.abs(C[i][bj]))) bj = j; used.add(bj); pm.push(bj); } best = { pm }; }
+  const sg = best.pm.map((j, i) => C[i][j] < 0 ? -1 : 1), Q = G.P.map(r => best.pm.map((j, i) => sg[i] * r[j])), phi = best.pm.map((j, i) => Math.abs(C[i][j]));
+  const h2G = G.h2, asgG = Q.map(r => r.reduce((b, v, j) => Math.abs(v) > Math.abs(r[b]) ? j : b, 0));
+  const moved = order.filter(i => assign[i] !== asgG[i] && (Math.abs(P[i][assign[i]]) >= .4 || Math.abs(Q[i][asgG[i]]) >= .4));
+  const dAll = P.flatMap((r, i) => r.map((v, j) => Math.abs(v) - Math.abs(Q[i][j]))), md = S.mean(P.flatMap((r, i) => r.map((v, j) => Math.abs(v - Q[i][j]))));
+  const cl = v => v >= .95 ? '実質的に同じ' : v >= .85 ? 'よく似ている' : '異なる';
+  let h = '<h4>ポリコリックと通常（ピアソン）の比較</h4>' + `<p class="note">同じ項目・同じ因子数（${k}）・同じ抽出法と回転で、通常のピアソン相関による因子分析も行い、因子の並びと向きをそろえて比べました。</p>`;
+  h += table(['項目', ...Array.from({ length: k }, (_, j) => [`F${j + 1} ポリ`, `F${j + 1} 通常`, '差']).flat(), '共通性 ポリ', '共通性 通常'],
+    order.map(i => [esc(names[i]), ...P[i].flatMap((v, j) => { const d = v - Q[i][j]; return [{ v: f2(v), cls: Math.abs(v) >= .4 ? 'sig hi' : '' }, { v: f2(Q[i][j]), cls: Math.abs(Q[i][j]) >= .4 ? 'sig hi' : '' }, { v: (d >= 0 ? '+' : '') + f2(d), cls: Math.abs(d) >= .1 ? 'sig' : '' }]; }), f2(F.h2[i]), f2(h2G[i])]));
+  h += '<p class="note">「差」は ポリコリック − 通常 です。|差| ≥ .10 を色で示しています。</p>';
+  const rows = [['タッカーの一致係数', ...phi.map(v => `${fmt(v)}（${cl(v)}）`)]];
+  if (k > 1 && F.ssl && G.ssl) rows.push(['回転後の負荷量平方和（ポリ／通常）', ...best.pm.map((j, i) => `${fmt(F.ssl[i])}／${fmt(G.ssl[j])}`)]);
+  h += table(['', ...Array.from({ length: k }, (_, j) => `第${j + 1}因子`)], rows);
+  const fitRow = (lab, X) => [lab, X.fit ? fmt(X.fit.chi, 2) + ` (${X.fit.df})` : '—', X.fit && isFinite(X.fit.rmsea) ? fmt(X.fit.rmsea) : '—', fmt(X.rmsr), X.Phi && k > 1 ? X.Phi.flatMap((r, i) => r.slice(0, i)).map(f2).join('、') : '—'];
+  const GPhi = G.Phi ? { Phi: best.pm.map((a, i) => best.pm.map((b, j) => sg[i] * sg[j] * G.Phi[a][b])) } : {};
+  h += table(['', 'χ²（df）', 'RMSEA', 'RMSR', '因子間相関'], [fitRow('ポリコリック', F), fitRow('通常（ピアソン）', { ...G, ...GPhi })]);
+  if (moved.length) h += `<p class="warn">いちばん負荷の大きい因子が変わった項目: ${moved.map(i => esc(names[i])).join('、')}</p>`;
+  const up = S.mean(dAll);
+  const interp = `ポリコリックと通常の比較：因子ごとのタッカーの一致係数は ${phi.map(v => fmt(v, 2)).join('、')} で、${Math.min(...phi) >= .95 ? 'どの因子も実質的に同じ因子とみなせます（.95 以上）。この場合、どちらの相関を使っても結論は変わらないので、論文では主に使った方を報告し、もう一方でも同じ構造だったと書き添えるとよいでしょう' : Math.min(...phi) >= .85 ? '因子の内容はよく似ています（.85 以上）が、細部は違います。項目の段階数が少ない、または回答が偏っているなら、ポリコリックの結果を主に報告するのが一般的です' : '一致しない因子があり、どちらの相関を使うかで解釈が変わる可能性があります。回答の偏りや段階数を確かめ、順序尺度ならポリコリックの結果を優先して検討してください'}（一致係数の目安：Lorenzo-Seva & ten Berge, 2006）。負荷量の絶対値は、ポリコリックの方が平均 ${fmt(Math.abs(up), 3)} ${up >= 0 ? '大きく' : '小さく'}なりました（項目×因子ごとの差の絶対値の平均 = ${fmt(md, 3)}）。段階の少ない尺度ではピアソン相関が実際の関連より小さく出やすく、ポリコリック相関はその目減りを補います。` + (moved.length ? `ただし ${moved.map(i => esc(names[i])).join('、')} は、どちらの相関を使うかで属する因子が変わりました。` : '');
+  return { html: h, interp, G };
+}
 ANALYSES.db.fa = function () {
   const interpParts = [];
   const R = state.db.roles, items = [...R.fa].sort((a, b) => a - b); need(items.length >= 3, '因子分析の項目を3つ以上選んでください。');
   const C = items.map(j => dbCol(j).map(toNum)), ok = C[0].map((_, i) => C.every(c => isFinite(c[i]))), cols = C.map(c => c.filter((_, i) => ok[i])), n = cols[0].length, p = items.length;
   need(n > p + 2, `回答者の数（${n}）が項目数より十分多くないと計算できません。`);
   const zeroVar = items.filter((_, q) => S.sd(cols[q]) === 0); need(!zeroVar.length, `全員が同じ値の項目があります: ${zeroVar.map(nm).join('、')}`);
-  const names = items.map(j => vn(j)), Rm = S.corMatrix(cols);
+  const names = items.map(j => vn(j)), fc = ['poly', 'cmp'].includes(state.opt.fcor) ? state.opt.fcor : 'pearson';
+  const PC = fc === 'pearson' ? null : S.polychoric(cols), Rp = S.corMatrix(cols), Rm = PC ? PC.R : Rp;
+  const ordinalLike = !PC && cols.flat().every(v => v === Math.round(v)) && (Math.max(...cols.flat()) - Math.min(...cols.flat())) < 8;
   let K; try { K = S.kmo(Rm); } catch (e) { throw new Error('相関行列の逆行列が計算できません。まったく同じ内容の項目がないか確認してください。'); }
   const B = S.bartlettSph(Rm, n), ev = S.eigSym(Rm).values, PA = S.parallel(n, p, 100);
   let nPA = 0; while (nPA < p && ev[nPA] > PA.q95[nPA]) nPA++; const nK = ev.filter(v => v > 1).length;
   const maxK = Math.floor((2 * p + 1 - Math.sqrt(8 * p + 1)) / 2);
   let k = state.opt.nf === 'auto' ? Math.max(1, nPA) : +state.opt.nf; if (state.opt.ext === 'ml' || state.opt.ext === 'gls') k = Math.min(k, Math.max(1, maxK)); k = Math.min(k, p - 1);
   if (!S.EXTRACTIONS[state.opt.ext]) state.opt.ext = 'ml'; if (!S.ROTATIONS[state.opt.rot]) state.opt.rot = 'promax';
-  const F = S.factorAnalysis(cols, k, state.opt.ext, k > 1 ? state.opt.rot : 'none', state.opt.knorm), P = F.P;
+  const F = S.factorAnalysis(cols, k, state.opt.ext, k > 1 ? state.opt.rot : 'none', state.opt.knorm, Rm), P = F.P;
   const assign = P.map(r => r.reduce((b, v, j) => Math.abs(v) > Math.abs(r[b]) ? j : b, 0));
   const order = P.map((_, i) => i).sort((a, b) => assign[a] - assign[b] || Math.abs(P[b][assign[b]]) - Math.abs(P[a][assign[a]]));
   const extName = S.EXTRACTIONS[state.opt.ext], rotName = k > 1 && state.opt.rot !== 'none' ? S.ROTATIONS[state.opt.rot][0] + '回転' + (state.opt.rot.startsWith('promax') || state.opt.rot === 'varimax' ? '' : state.opt.knorm ? '（Kaiser の正規化あり）' : '（正規化なし）') : '回転なし', oblique = !!F.Phi;
   const kmoLab = v => v >= .9 ? '非常に良い' : v >= .8 ? '良い' : v >= .7 ? '普通' : v >= .6 ? 'やや低い' : v >= .5 ? '低い' : '不適';
-  let h = `<p class="note">項目数 = ${p}、n = ${n}${ok.filter(v => !v).length ? `（欠測のある ${ok.filter(v => !v).length} 行を除外）` : ''}、${extName}・${rotName}、因子数 = ${k}${state.opt.nf === 'auto' ? '（平行分析で自動決定）' : ''}。</p>`;
+  let h = `<p class="note">項目数 = ${p}、n = ${n}${ok.filter(v => !v).length ? `（欠測のある ${ok.filter(v => !v).length} 行を除外）` : ''}、${extName}・${rotName}、因子数 = ${k}${state.opt.nf === 'auto' ? '（平行分析で自動決定）' : ''}、相関 = ${PC ? '<b>ポリコリック相関</b>' : 'ピアソンの積率相関'}。</p>`;
+  if (PC) h += faPolyInfo(PC, Rp, names, n);
+  else if (ordinalLike) h += `<p class="note">項目の値が ${Math.max(...cols.flat()) - Math.min(...cols.flat()) + 1} 段階の整数です。リッカート尺度のような順序尺度なら、オプションの「相関」で<b>ポリコリック</b>を選ぶと、段階が少ないことや分布の偏りによる相関の目減りを補えます（「比較」を選ぶと両方の結果を並べます）。</p>`;
   h += '<h4>因子分析に向いたデータか</h4>' + table(['指標', '値', '目安'], [
     ['KMO（標本妥当性）', fmt(K.kmo), `${kmoLab(K.kmo)}（.6 以上が望ましい）`],
     ['Bartlett の球面性検定', `χ²(${B.df}) = ${fmt(B.chi, 2)}`, { v: fp(B.p), cls: B.p < .05 ? 'sig' : '' }]]);
@@ -763,11 +810,15 @@ ANALYSES.db.fa = function () {
   const ssRows = [['回転前の負荷量平方和', ...F.ssu.map(v => fmt(v)), ''], ['　寄与率 %', ...F.ssu.map(v => fmt(v / p * 100, 1)), fmt(F.ssu.reduce((a, b) => a + b, 0) / p * 100, 1)]];
   if (k > 1 && state.opt.rot !== 'none' && F.ssl) ssRows.push(['回転後の負荷量平方和', ...F.ssl.map(v => fmt(v)), oblique ? '—' : fmt(F.ssl.reduce((a, b) => a + b, 0) / p * 100, 1) + ' %']);
   h += table(['', ...Array.from({ length: k }, (_, j) => `第${j + 1}因子`), '合計'], ssRows) + (oblique ? '<p class="note">斜交回転では因子どうしが相関するため、回転後の負荷量平方和は合計しません。</p>' : '');
+  let CMP = null; if (fc === 'cmp') { CMP = faCompare(cols, k, F, P, names, order, assign, Rp); h += CMP.html; }
+  if (PC) interpParts.push('下位尺度の α・ω は、ふだん尺度得点として使う素点（ピアソンの相関）にもとづいて計算しています。ポリコリック相関にもとづく「順序 α」は、素点の合計点の信頼性ではないため、ここでは出していません。');
+  if (CMP) interpParts.push(CMP.interp);
   if (oblique) {
     h += '<h4>因子間相関</h4>' + table(['', ...Array.from({ length: k }, (_, j) => `第${j + 1}因子`)], F.Phi.map((r, i) => [`第${i + 1}因子`, ...r.map((v, j) => j <= i ? f2(v) : '')]));
     h += '<details><summary class="note" style="cursor:pointer">構造行列（項目と因子の相関）を表示</summary>' + table(['項目', ...Array.from({ length: k }, (_, j) => `第${j + 1}因子`)], order.map(i => [esc(names[i]), ...F.S[i].map(f2)])) + '</details>';
   }
   h += `<h4>モデルの適合度（${F.fit ? F.fit.label : extName}）</h4>` + table(F.fit ? ['χ²', '自由度', 'p 値', 'RMSEA', 'RMSR'] : ['RMSR（残差の二乗平均平方根）'], [F.fit ? [fmt(F.fit.chi, 2), F.fit.df, isFinite(F.fit.p) ? fp(F.fit.p) : '—', fmt(F.fit.rmsea), fmt(F.rmsr)] : [fmt(F.rmsr)]]) + '<p class="note">RMSR は相関行列の非対角要素について「実測の相関 − モデルが再現した相関」を二乗平均したもので、.05 以下が目安です。</p>';
+  if (PC && F.fit) h += '<p class="warn">ポリコリック相関行列に最尤法・GLS をあてはめたときの χ² と RMSEA は、データが多変量正規分布にしたがうという前提が成り立たないため<b>参考値</b>です（psych::fa と同じ値を表示しています）。RMSR と負荷量の解釈を中心にしてください。</p>';
   if (F.fit) h += '<p class="note">χ² 検定は「このモデルでデータを説明できる」という帰無仮説の検定で、p が大きいほど当てはまりが良いことを示します（標本が大きいと有意になりやすい）。RMSEA は .05 以下で良好、.08 以下で許容の目安です。</p>';
   { // 下位尺度の信頼性：負の負荷の項目は自動で反転して α と ω を求める（psych::alpha / psych::omega(nfactors = 1) と同じ定義）
     const allV = cols.flat(), lo = Math.min(...allV), hi = Math.max(...allV), rel = [];
@@ -801,8 +852,8 @@ ANALYSES.db.fa = function () {
       oblique && k > 1 ? `因子間相関の最大は ${fmt(phiMax, 2)} です。${phiMax >= .3 ? '因子どうしにある程度の相関があるので、斜交回転を選んだのは適切です。' : '因子どうしの相関は小さいので、直交回転（バリマックスなど）でもほぼ同じ解になります。'}${phiMax >= .8 ? ' ただし .80 を超える相関は、2 つの因子がほぼ同じものを測っている可能性を示します。' : ''}` : '',
       F.fit && isFinite(F.fit.rmsea) ? `RMSEA = ${fmt(F.fit.rmsea, 3)} は、モデルの当てはまりが${F.fit.rmsea <= .05 ? '良い' : F.fit.rmsea <= .08 ? 'まずまずの' : F.fit.rmsea <= .10 ? 'やや悪い' : '悪い'}ことを示します（.05 以下で良い、.08 以下で許容）。` : '', ...interpParts);
   }
-  h += apa('論文記載例', `${p} 項目について${extName}・${rotName}による因子分析を行った。平行分析の結果から ${k} 因子解を採用した（KMO = ${fmt(K.kmo, 2)}, Bartlett の球面性検定 χ²(${B.df}) = ${fmt(B.chi, 2)}, ${apaP(B.p)}）。${k > 1 && state.opt.rot !== 'none' ? `回転後の${oblique ? '因子間相関は ' + F.Phi.flatMap((r, i) => r.slice(0, i)).map(v => f2(v)).join('、') + ' であった' : '負荷量平方和は ' + F.ssl.map(v => fmt(v, 2)).join('、') + ' であった'}。` : ''}`);
-  return { title: `因子分析（${k} 因子・${extName}・${rotName}）`, html: h };
+  h += apa('論文記載例', `${p} 項目について${PC ? 'ポリコリック相関行列にもとづき、' : ''}${extName}・${rotName}による因子分析を行った。平行分析の結果から ${k} 因子解を採用した（KMO = ${fmt(K.kmo, 2)}, Bartlett の球面性検定 χ²(${B.df}) = ${fmt(B.chi, 2)}, ${apaP(B.p)}）。${k > 1 && state.opt.rot !== 'none' ? `回転後の${oblique ? '因子間相関は ' + F.Phi.flatMap((r, i) => r.slice(0, i)).map(v => f2(v)).join('、') + ' であった' : '負荷量平方和は ' + F.ssl.map(v => fmt(v, 2)).join('、') + ' であった'}。` : ''}`);
+  return { title: `因子分析（${k} 因子・${extName}・${rotName}${PC ? '・ポリコリック' + (CMP ? 'と通常の比較' : '') : ''}）`, html: h };
 };
 
 // ----- ロジスティック回帰の図 -----
