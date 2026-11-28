@@ -120,6 +120,31 @@ svg.chart text { font-family: var(--f-ui); font-size: 11px; fill: var(--muted); 
 .bigres { font-family: var(--f-num); font-size: 18px; }
 .bigres small { font-family: var(--f-ui); font-size: 12px; color: var(--muted); }
 /* データベース型・図 */
+.tbadge.date { background: #8a6d3b; } button.tbadge { border: 0; cursor: pointer; font-weight: 600; } button.tbadge.fixed { box-shadow: 0 0 0 1.5px var(--fg) inset; } button.tbadge.warn::after { content: '!'; margin-left: 2px; color: #ffd27a; }
+.vtmenu { position: absolute; z-index: 950; width: 290px; background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.2); padding: 10px; font-size: 12px; }
+.vtopt { display: flex; gap: 8px; align-items: flex-start; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 6px; margin-top: 4px; cursor: pointer; color: var(--fg); font: inherit; }
+.vtopt:hover { background: var(--panel); } .vtopt.on { border-color: var(--accent); background: var(--panel); } .vtopt small { display: block; color: var(--muted); } .vtopt .tbadge { flex: none; margin-top: 2px; }
+header.top { position: relative; } .setupbtn { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); }
+.setupdlg { position: fixed; inset: 0; z-index: 1300; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.setupdlg[hidden] { display: none; }
+.setupbox { width: min(680px, 100%); max-height: 92vh; overflow: auto; background: var(--sheet); color: var(--fg); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.3); padding: 18px 20px; font-size: 14px; }
+.suhead { display: flex; align-items: center; gap: 10px; } .suhead b { font-size: 17px; } .suhead .btn { margin-left: auto; }
+.suprog { height: 5px; background: var(--panel); border-radius: 3px; margin: 10px 0 12px; overflow: hidden; } .suprog i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.susteps { list-style: none; display: flex; gap: 6px; padding: 0; margin: 0 0 12px; } .susteps li { flex: 1; }
+.susteps button { width: 100%; display: flex; align-items: center; gap: 6px; background: var(--panel); border: 2px solid transparent; border-radius: 8px; padding: 7px 8px; cursor: pointer; color: var(--fg); font: inherit; font-size: 12.5px; text-align: left; }
+.susteps li.cur button { border-color: var(--accent); background: var(--sheet); font-weight: 600; }
+.sumark { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--muted); color: var(--sheet); font-size: 12px; font-weight: 700; }
+.susteps li.cur .sumark { background: var(--accent); } .sumark.ok { background: #3a8a4f; } .sumark.skip { background: var(--line); color: var(--muted); }
+.subody h3 { font-size: 16px; margin: 4px 0 8px; } .subody p { margin: 6px 0; line-height: 1.7; }
+.sufig { background: var(--panel); border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 12.5px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sufig table { border-collapse: collapse; background: var(--sheet); } .sufig th, .sufig td { border: 1px solid var(--line); padding: 2px 10px; } .sufig th { background: #e8f0f6; color: #22211f; } .sufig span { color: var(--muted); }
+.sufig.tree { display: block; font-family: ui-monospace, Menlo, monospace; line-height: 1.8; } .sufig.tree b { color: var(--accent); }
+.suact { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; } .suact .btn.primary { font-size: 14px; padding: 7px 14px; }
+.surow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; } .surow input { flex: 1; min-width: 160px; font: inherit; padding: 4px 8px; }
+.suok { color: #3a8a4f; font-weight: 600; } .sumsg { background: var(--panel); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.sudone { list-style: none; padding: 0; } .sudone li { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.sufoot { display: flex; gap: 8px; align-items: center; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+@media (max-width: 560px) { .susteps span:not(.sumark) { display: none; } .setupbtn { position: static; transform: none; margin-top: 6px; } }
 .recwrap { position: relative; } .recpop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 900; width: min(440px, 92vw); background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 12px 14px; font-size: 13px; }
 .recpop .recrow { display: flex; align-items: center; gap: 6px; margin: 6px 0; flex-wrap: wrap; } .recpop input#recStudy { flex: 1; min-width: 140px; font: inherit; padding: 3px 6px; }
 #recBtn.recon { color: var(--sig); font-weight: 600; } .rectag { color: var(--accent); font-weight: 600; }
@@ -2487,7 +2512,21 @@ function isMiss(c, v, ms) { // 「9, 99」のような個別の値と「90~99」
   return ms.some(m => { const r = m.split('~'); if (r.length === 2 && isFinite(n)) { const lo = /^lo/i.test(r[0].trim()) ? -Infinity : toNum(r[0]), hi = /^hi/i.test(r[1].trim()) ? Infinity : toNum(r[1]); return n >= lo && n <= hi; } return m === v || (isFinite(n) && toNum(m) === n); });
 }
 function rawCol(j) { const v = rawColBase(j), m = typeof filterMask === 'function' ? filterMask() : null; return m ? v.map((x, i) => m[i] ? x : '') : v; } // ケースの選択中は、選ばれていない人を欠損に
-function rawColBase(j) { const c = state.db.cols[j], ms = missSet(c); return state.db.rows.map(r => { const v = String(r[j] ?? '').trim(); return isMiss(c, v, ms) ? '' : v; }); }
+function rawColBase(j) { const c = state.db.cols[j], ms = missSet(c), num = c.vtype === 'num'; return state.db.rows.map(r => { const v = String(r[j] ?? '').trim(); return isMiss(c, v, ms) || (num && v !== '' && !isFinite(toNum(v))) ? '' : v; }); }
+// ----- 変数の型（自動・数値・文字・日付）-----
+const VTYPES = [['', '自動', '中身を見て決めます（数字だけなら数値、文字がまじれば文字）'], ['num', '数値', '計算に使います。数字でない値（NA など）は欠損として扱います'], ['str', '文字', 'カテゴリ（群）として扱います。1・2 で入れた性別なども、ここにすると群になります'], ['date', '日付', '2026/11/28 のような日付。統計の計算には使いません']];
+const TBADGE = { num: '数', cat: '類', date: '日', empty: '−' };
+function parseDate(v) { // 2026/11/28・2026-11-28・2026年11月28日（時刻つきも可）
+  const m = String(v).trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).match(/^(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})日?(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null; const d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)); return d.getMonth() === +m[2] - 1 ? d : null;
+}
+function vtypeInfo(j) { // 型を決めたことで扱いが変わる値の数
+  const c = state.db.cols[j], ms = missSet(c); let bad = 0; const ex = new Set();
+  state.db.rows.forEach(r => { const v = String(r[j] ?? '').trim(); if (v === '' || isMiss(c, v, ms)) return; if ((c.vtype === 'num' && !isFinite(toNum(v))) || (c.vtype === 'date' && !parseDate(v))) { bad++; if (ex.size < 3) ex.add(v); } });
+  return { bad, ex: [...ex] };
+}
+function setVtype(j, t) { const c = state.db.cols[j]; c.vtype = t; if (t === 'num' && c.measure === 'nominal') c.measure = ''; if (t === 'str' && !c.measure) c.measure = 'nominal'; save(); }
+function vtypeNote(j) { const c = state.db.cols[j]; if (!c.vtype || c.vtype === 'str') return ''; const I = vtypeInfo(j); if (!I.bad) return ''; return c.vtype === 'num' ? `数字でない値 ${I.bad} 件（${I.ex.map(v => '「' + esc(v) + '」').join('')}${I.bad > I.ex.length ? '…' : ''}）を欠損として扱っています。` : `日付として読めない値が ${I.bad} 件あります（${I.ex.map(v => '「' + esc(v) + '」').join('')}）。`; }
 function autoType(v) { v = v.filter(x => x !== ''); if (!v.length) return 'empty'; return v.every(x => !isNaN(toNum(x))) ? 'num' : 'cat'; }
 function nonNumInfo(j) { // 数字として読めない値（欠損値の指定を除く）を数える
   const cnt = new Map(); let nNum = 0;
@@ -2496,7 +2535,7 @@ function nonNumInfo(j) { // 数字として読めない値（欠損値の指定�
   return { bad, nBad, nNum, tokenOk: bad.every(([v]) => !/[\s,、，~]/.test(v)) };
 }
 function nonNumSuspect(j) { // 数値のつもりの列に、数字でない値がまじっていそうか
-  const c = state.db.cols[j]; if (c.measure === 'nominal') return null; const I = nonNumInfo(j); if (!I.nBad || !I.nNum) return null;
+  const c = state.db.cols[j]; if (c.measure === 'nominal' || c.vtype) return null; const I = nonNumInfo(j); if (!I.nBad || !I.nNum) return null;
   return c.measure === 'scale' || c.measure === 'ordinal' || (I.bad.length <= 5 && I.nNum >= I.nBad * 4) ? I : null;
 }
 function nonNumText(I, max = 4) { return I.bad.slice(0, max).map(([v, k]) => `「${esc(v)}」${k} 件`).join('、') + (I.bad.length > max ? ` ほか ${I.bad.length - max} 種類` : ''); }
@@ -2504,7 +2543,7 @@ function nonNumToMissing(js) { // 数字でない値を各列の欠損値に足�
   let done = 0; js.forEach(j => { const I = nonNumSuspect(j); if (!I || !I.tokenOk) return; const c = state.db.cols[j], cur = missSet(c); I.bad.forEach(([v]) => { if (!cur.includes(v)) cur.push(v); }); c.missing = cur.join(', '); done++; });
   return done;
 }
-function colType(j) { const t = autoType(rawCol(j)), m = state.db.cols[j].measure; if (t === 'empty') return t; return m === 'nominal' ? 'cat' : t; }
+function colType(j) { const c = state.db.cols[j], t = autoType(rawCol(j)); if (t === 'empty') return t; if (c.vtype === 'date') return 'date'; if (c.vtype === 'str') return 'cat'; if (c.vtype === 'num') return 'num'; return c.measure === 'nominal' ? 'cat' : t; }
 const LABEL_RANK = {};
 function vlMap(c) { const mp = {}; (c.values || []).forEach(([k, l], i) => { if (String(k).trim() !== '' && String(l).trim() !== '') { const key = String(k).trim(); mp[key] = String(l).trim(); LABEL_RANK[mp[key]] = isFinite(toNum(key)) ? toNum(key) : 1e6 + i; } }); return mp; }
 function codeToLabel(c, v) { if (v === '') return v; const mp = vlMap(c); if (mp[v] != null) return mp[v]; const n = toNum(v); if (isFinite(n)) { const k = Object.keys(mp).find(x => toNum(x) === n); if (k != null) return mp[k]; } return v; }
@@ -2540,7 +2579,7 @@ function renderDbSheet(f) {
     </div>${rlinkBox()}${cbHelp()}`;
   if (view === 'prep') { $('#sheetBody').innerHTML = tabs + filterBanner() + renderPrepView() + tools; $('#oVlab').value = state.opt.vlab || 'label'; return; }
   if (view === 'var') { $('#sheetBody').innerHTML = tabs + filterBanner() + renderVarView() + tools; $('#oVlab').value = state.opt.vlab || 'label'; return; }
-  const head = '<tr><th class="rn">#</th>' + d.cols.map((c, j) => `<th title="${esc(c.label || '')}"><div class="colhd"><span class="tbadge ${colType(j)}">${{ num: '数', cat: '類', empty: '−' }[colType(j)]}</span><input class="name" id="nm-${j}" data-nm="${j}" value="${esc(c.name)}"></div></th>`).join('') + '</tr>';
+  const head = '<tr><th class="rn">#</th>' + d.cols.map((c, j) => `<th title="${esc(c.label || '')}"><div class="colhd"><button class="tbadge ${colType(j)}${c.vtype ? ' fixed' : ''}${vtypeNote(j) || (colType(j) === 'cat' && nonNumSuspect(j)) ? ' warn' : ''}" data-vtj="${j}" title="型：${(VTYPES.find(v => v[0] === (c.vtype || '')) || VTYPES[0])[1]}（押すと変えられます）">${TBADGE[colType(j)]}</button><input class="name" id="nm-${j}" data-nm="${j}" value="${esc(c.name)}"></div></th>`).join('') + '</tr>';
   const disp = d.cols.map((c, j) => showVL && (c.values || []).length ? v => codeToLabel(c, String(v ?? '').trim()) : null), ms = d.cols.map(c => missSet(c));
   const fm = filterMask(), body = d.rows.map((r, i) => `<tr${fm && !fm[i] ? ' class="fout"' : ''}><td class="rn">${i + 1}</td>` + d.cols.map((c, j) => { const v = r[j] ?? '', miss = isMiss(c, String(v).trim(), ms[j]); return `<td><input class="cell${miss ? ' miss' : ''}" id="c-${i}-${j}" data-r="${i}" data-c="${j}" value="${esc(disp[j] ? disp[j](v) : v)}" ${disp[j] ? `readonly title="値 ${esc(v)}"` : ''}></td>`; }).join('') + '</tr>').join('');
   $('#sheetBody').innerHTML = tabs + filterBanner() + `<p class="hint" style="margin-bottom:8px">${f.desc} 変数ビューで、ラベル（項目内容）・値ラベル（1＝男性 など）・欠損値を決められます。</p>
@@ -2613,8 +2652,9 @@ function renderVarView() {
       <td><select data-vm="${j}">${MEASURES.map(([v, l]) => `<option value="${v}" ${(c.measure || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td class="vsum"><button class="btn" data-vact="edit" data-j="${j}">${vals.length ? '編集' : '設定'}</button> <span>${sum || '<span class="hint">なし</span>'}</span></td>
       <td><input class="vmiss" data-vmiss="${j}" value="${esc(c.missing || '')}" placeholder="例：99"></td>
-      <td><span class="tbadge ${t}">${{ num: '数', cat: '類', empty: '−' }[t]}</span>${t === 'cat' && nonNumSuspect(j) ? ' <b style="color:var(--sig)" title="数字でない値があります">⚠</b>' : ''}</td><td class="total">${nValid}</td></tr>`;
-    { const I = t === 'cat' ? nonNumSuspect(j) : null; if (I) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="warn" style="margin:2px 0">「${esc(c.name)}」は数字の列のようですが、<b>数字でない値</b>（${nonNumText(I)}）があるため「類」になっています。${I.tokenOk ? `無回答の印なら <button class="btn" data-vact="nonnum" data-j="${j}">欠損値にする</button> を押すと「数」になります。打ち間違いなら、データビューで直してください。` : 'データビューで値を直してください（空白やカンマを含む値は欠損値に指定できません）。'}</p></td></tr>`; }
+      <td style="white-space:nowrap"><span class="tbadge ${t}">${TBADGE[t]}</span> <select data-vty="${j}" title="変数の型">${VTYPES.map(([v, l]) => `<option value="${v}" ${(c.vtype || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${t === 'cat' && nonNumSuspect(j) ? ' <b style="color:var(--sig)" title="数字でない値があります">⚠</b>' : ''}</td><td class="total">${nValid}</td></tr>`;
+    { const nt = vtypeNote(j); if (nt) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="note" style="margin:2px 0">「${esc(c.name)}」：${nt}</p></td></tr>`; }
+    { const I = t === 'cat' ? nonNumSuspect(j) : null; if (I) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="warn" style="margin:2px 0">「${esc(c.name)}」は数字の列のようですが、<b>数字でない値</b>（${nonNumText(I)}）があるため「類」になっています。${I.tokenOk ? `無回答の印なら <button class="btn" data-vact="nonnum" data-j="${j}">欠損値にする</button> を押すと「数」になります。` : ''}<button class="btn" data-vact="asnum" data-j="${j}">型を「数値」にする</button> と、数字でない値をすべて欠損として扱います。打ち間違いなら、データビューで直してください。</p></td></tr>`; }
     if (vvOpen === j) {
       const lv = levelsOf(raw).slice(0, 40);
       h += `<tr class="vvedit"><td></td><td colspan="7"><div class="vvbox"><b>値ラベル：${esc(c.name)}</b>
@@ -2635,6 +2675,7 @@ $('#sheetBody').addEventListener('click', e => {
   const vt = e.target.closest('[data-view]'); if (vt) { state.opt.dbView = vt.dataset.view; vvOpen = -1; save(); renderSheet(); return; }
   const b = e.target.closest('[data-vact]'); if (!b) return; const act = b.dataset.vact;
   if (act === 'nonnum') { nonNumToMissing([+b.dataset.j]); varViewRefresh(true); return; }
+  if (act === 'asnum') { setVtype(+b.dataset.j, 'num'); varViewRefresh(true); return; }
   if (act === 'opensav') { $('#savFile').click(); return; }
   if (act === 'opencb') { $('#cbFile').click(); return; }
   if (act === 'rlink') { rlinkExport(e.target.closest('button')); return; }
@@ -2663,11 +2704,12 @@ $('#sheetBody').addEventListener('change', e => {
   if (el.id === 'oVlab') { state.opt.vlab = el.value; save(); return; }
   if (el.id === 'oShowVL') { state.opt.showVL = el.checked; save(); renderSheet(); return; }
   if (el.dataset.vm != null) { state.db.cols[+el.dataset.vm].measure = el.value; varViewRefresh(true); return; }
+  if (el.dataset.vty != null) { setVtype(+el.dataset.vty, el.value); varViewRefresh(true); return; }
   if (el.dataset.vmiss != null || el.dataset.vn != null || el.dataset.vl != null) { varViewRefresh(true); return; }
   if (el.dataset.vcode != null || el.dataset.vlab != null) varViewRefresh(false);
 });
 let autoTimer = 0;
-function dbChanged() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { renderAutoGraphs(); document.querySelectorAll('#grid .tbadge').forEach((b, j) => { const t = colType(j); b.className = 'tbadge ' + t; b.textContent = { num: '数', cat: '類', empty: '−' }[t]; }); renderDbPanel(true); }, 350); }
+function dbChanged() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { renderAutoGraphs(); document.querySelectorAll('#grid .tbadge').forEach((b, j) => { const t = colType(j); b.className = 'tbadge ' + t + (state.db.cols[j] && state.db.cols[j].vtype ? ' fixed' : ''); b.textContent = TBADGE[t]; }); renderDbPanel(true); }, 350); }
 function renderAutoGraphs() {
   const box = $('#autoG'); if (!box) return;
   box.innerHTML = state.db.cols.map((c, j) => {
@@ -3868,6 +3910,22 @@ ANALYSES.db.ancova2 = function () {
   h += apa('論文記載例', `${cn.join('・')}を共変量とする二要因の共分散分析の結果、${nA}の主効果（<i>F</i>(${A.T.A.df}, ${A.error.df}) = ${fmt(A.T.A.F, 2)}, ${apaP(A.T.A.p)}, 偏 η² = ${fmt(A.T.A.peta2, 2)}）、${nB}の主効果（<i>F</i>(${A.T.B.df}, ${A.error.df}) = ${fmt(A.T.B.F, 2)}, ${apaP(A.T.B.p)}, 偏 η² = ${fmt(A.T.B.peta2, 2)}）、交互作用（<i>F</i>(${inter.df}, ${A.error.df}) = ${fmt(inter.F, 2)}, ${apaP(inter.p)}, 偏 η² = ${fmt(inter.peta2, 2)}）について検討した。${inter.p < .05 ? '交互作用が有意であったため、単純主効果の検定を行った。' : ''}`);
   return { title: `二要因の共分散分析（${vn(y)} × ${vn(a)} × ${vn(b)}、共変量：${cv.map(j => vn(j)).join('・')}）`, html: h };
 };
+
+// ----- データビューの見出しの「数・類・日」を押して型を変える -----
+function vtMenuClose() { document.getElementById('vtMenu')?.remove(); }
+$('#sheetBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-vtj]'); if (!b || state.fmt !== 'db') return; e.stopPropagation();
+  const j = +b.dataset.vtj, c = state.db.cols[j]; if (document.getElementById('vtMenu')?.dataset.j === String(j)) { vtMenuClose(); return; } vtMenuClose();
+  const r = b.getBoundingClientRect(), note = vtypeNote(j), sus = colType(j) === 'cat' ? nonNumSuspect(j) : null;
+  document.body.insertAdjacentHTML('beforeend', `<div class="vtmenu" id="vtMenu" data-j="${j}" style="left:${Math.min(r.left, innerWidth - 300) + scrollX}px;top:${r.bottom + 4 + scrollY}px"><b>「${esc(c.name || '列' + (j + 1))}」の型</b>
+    ${VTYPES.map(([v, l, d]) => `<button class="vtopt${(c.vtype || '') === v ? ' on' : ''}" data-vtset="${v}"><span class="tbadge ${v === 'num' ? 'num' : v === 'str' ? 'cat' : v === 'date' ? 'date' : ''}">${v === 'num' ? '数' : v === 'str' ? '類' : v === 'date' ? '日' : '自'}</span><span><b>${l}</b><small>${d}</small></span></button>`).join('')}
+    ${note ? `<p class="note" style="margin:6px 0 0">${note}</p>` : ''}${sus ? `<p class="warn" style="margin:6px 0 0">数字でない値（${nonNumText(sus, 3)}）があるため「類」になっています。「数値」を選ぶと、それらを欠損として扱います。</p>` : ''}</div>`);
+});
+document.addEventListener('click', e => {
+  const m = document.getElementById('vtMenu'); if (!m) return; const o = e.target.closest('[data-vtset]');
+  if (o) { setVtype(+m.dataset.j, o.dataset.vtset); vtMenuClose(); renderSheet(); renderDbPanel(true); return; }
+  if (!e.target.closest('#vtMenu')) vtMenuClose();
+});
 
 // ===== 構造方程式モデリング：AMOS 風のパス図エディタ =====
 function makeSemSample() { // 例として入っている架空データ（ストレス → 自尊感情 → 抑うつ、n = 300）
@@ -7653,6 +7711,95 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('input', e => { if (e.target.id === 'recStudy') { recCfg.study = e.target.value; recCfgSave(); const ex = document.getElementById('recEx'); if (ex) ex.textContent = '名前の例：' + [recSafe(recCfg.study || '研究名'), '因子分析5因子モデル', '36項目使用', recStamp(new Date())].join('_'); } });
 setTimeout(recRestore, 0);
+
+// ===== はじめの設定：①データを読み込む → ②結果を保存するフォルダ → ③ R の作業フォルダ を順番に案内する =====
+const SETUP_KEY = 'statlab-v1-setup';
+const setupCfg = (() => { try { return JSON.parse(localStorage.getItem(SETUP_KEY)) || {}; } catch (e) { return {}; } })();
+const setupSave = () => { try { localStorage.setItem(SETUP_KEY, JSON.stringify(setupCfg)); } catch (e) { } };
+const SU = { step: 0, msg: '' };
+function setupHasData() { return state.db && state.db.rows && state.db.rows.some(r => r.some(v => String(v ?? '').trim() !== '')) && !!(state.db.file || setupCfg.sample); }
+function setupStatus() {
+  const fs = recOK();
+  return [
+    { done: setupHasData(), skip: false },
+    { done: !!REC.dir, skip: !fs || !!setupCfg.skipRec },
+    { done: !!RLINK.dir, skip: !fs || !!setupCfg.skipR }
+  ];
+}
+function setupFirstOpen() { const st = setupStatus(); const i = st.findIndex(s => !s.done && !s.skip); return i < 0 ? 3 : i; }
+function setupOpen(step) {
+  document.getElementById('setupDlg')?.remove();
+  SU.step = step == null ? setupFirstOpen() : step; SU.msg = '';
+  document.body.insertAdjacentHTML('beforeend', '<div class="setupdlg" id="setupDlg" role="dialog" aria-modal="true" aria-label="はじめの設定"><div class="setupbox" id="setupBox"></div></div>');
+  setupRender();
+}
+function setupClose() { document.getElementById('setupDlg')?.remove(); }
+function setupRender() {
+  const box = document.getElementById('setupBox'); if (!box) return;
+  const st = setupStatus(), fs = recOK(), s = SU.step;
+  const labels = ['データを読み込む', '結果を保存するフォルダ', 'R の作業フォルダ'];
+  const mark = (i) => st[i].done ? '<span class="sumark ok">✓</span>' : st[i].skip ? '<span class="sumark skip">−</span>' : `<span class="sumark">${i + 1}</span>`;
+  const steps = `<ol class="susteps">${labels.map((l, i) => `<li class="${i === s ? 'cur' : ''}${st[i].done ? ' done' : ''}"><button data-su="go" data-i="${i}">${mark(i)}<span>${l}</span></button></li>`).join('')}</ol>`;
+  const noFs = `<p class="warn">このブラウザ（またはこの画面）ではフォルダを選べません。ダウンロードした「ブラウザ統計ラボ.html」を <b>Chrome か Edge で直接開く</b>と設定できます。この手順は飛ばして先へ進めます。</p>`;
+  let body = '';
+  if (s === 0) body = `<h3>① 分析するデータを読み込みます</h3>
+    <p>Excel（.xlsx）・CSV・SPSS（.sav）のファイルを選びます。1 行が 1 人、1 列が 1 つの項目（変数）になっている表です。いちばん上の行は項目名にしてください。</p>
+    <div class="sufig"><table><tr><th>ID</th><th>性別</th><th>Q1</th><th>Q2</th><th>…</th></tr><tr><td>1</td><td>1</td><td>4</td><td>3</td><td>…</td></tr><tr><td>2</td><td>2</td><td>5</td><td>2</td><td>…</td></tr></table><span>← 1 行目が項目名、2 行目から 1 人 1 行</span></div>
+    <div class="suact"><button class="btn primary" data-su="file">ファイルを選ぶ（Excel・CSV・SPSS）</button><input type="file" id="suFile" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.sav,.zsav,.xls" multiple hidden><button class="btn" data-su="sample">まず練習用のデータで試す</button></div>
+    ${st[0].done ? `<p class="suok">✓ 読み込み済み：${esc(state.db.file || '練習用のデータ')}（${state.db.rows.length} 行 × ${state.db.cols.length} 列）</p>` : ''}
+    <p class="hint">読み込んだあと、「変数ビュー」で項目の内容（ラベル）や型（数値・文字・日付）を確かめられます。</p>`;
+  if (s === 1) body = `<h3>② 結果を保存するフォルダを決めます</h3>
+    <p>解析を実行するたびに、<b>出力・その時のデータ・R スクリプト</b>をこのフォルダに自動で保存し、<b>解析記録一覧.html</b> を作ります。あとから「どのデータで、何を、どう分析したか」をたどれます。</p>
+    <div class="sufig tree">研究フォルダ（例：FMS研究）/<br>　├ データ/ ……… 元のデータ<br>　├ <b>結果/</b> ……… ← ここを選ぶ<br>　└ R/ ……………… ③で選ぶ</div>
+    ${fs ? `<label class="surow">研究名（記録のファイル名の先頭につきます）<input id="suStudy" value="${esc(recCfg.study || '')}" placeholder="例：FMS研究"></label>
+    <div class="suact"><button class="btn primary" data-su="rec">${REC.dir ? 'フォルダを変える' : '保存するフォルダを選ぶ'}</button>${st[1].done ? '' : '<button class="btn" data-su="skiprec">今はしない</button>'}</div>
+    ${st[1].done ? `<p class="suok">✓ 保存先：「${esc(REC.name)}」${recCfg.on ? '（自動記録：オン）' : '（自動記録：オフ）'}</p>` : ''}` : noFs}
+    <p class="hint">新しいフォルダを作るときは、フォルダを選ぶ画面の「新規フォルダ」を使います。</p>`;
+  if (s === 2) body = `<h3>③ R の作業フォルダを決めます</h3>
+    <p>「RStudio 用に書き出す」を押したとき、データ（data.csv）・読み込み用の R・分析ごとの R スクリプト・RStudio のプロジェクトファイルをこのフォルダに書き出します。アプリと同じ分析を R で確かめられます。</p>
+    <div class="sufig tree">研究フォルダ（例：FMS研究）/<br>　├ データ/<br>　├ 結果/ ……… ②で選んだフォルダ<br>　└ <b>R/</b> ……………… ← ここを選ぶ</div>
+    ${fs ? `<div class="suact"><button class="btn primary" data-su="r">${RLINK.dir ? 'フォルダを変える' : 'R の作業フォルダを選ぶ'}</button>${st[2].done ? '' : '<button class="btn" data-su="skipr">今はしない（R は使わない）</button>'}</div>
+    ${st[2].done ? `<p class="suok">✓ R の作業フォルダ：「${esc(RLINK.name)}」</p>` : ''}` : noFs}
+    <p class="hint">②と同じフォルダは選ばないでください（R のファイルと記録がまざります）。</p>`;
+  if (s === 3) body = `<h3>設定ができました</h3>
+    <ul class="sudone">${labels.map((l, i) => `<li>${mark(i)} ${l}：${i === 0 ? (st[0].done ? esc(state.db.file || '練習用のデータ') : '未設定') : i === 1 ? (st[1].done ? '「' + esc(REC.name) + '」' : st[1].skip ? '設定しない' : '未設定') : (st[2].done ? '「' + esc(RLINK.name) + '」' : st[2].skip ? '設定しない' : '未設定')}</li>`).join('')}</ul>
+    <p>次は、左の「データベース型」で、上の分析のタブ（基本統計・t 検定・因子分析 など）を選び、変数を入れて実行します。迷ったら「どの分析を使えばいい？」の案内を使ってください。</p>
+    <p class="hint">この設定は、画面の上の「はじめの設定」からいつでもやり直せます。</p>`;
+  const done = st.filter(x => x.done || x.skip).length;
+  box.innerHTML = `<div class="suhead"><b>はじめの設定</b><span class="hint">${done} / 3 完了</span><button class="btn" data-su="close" aria-label="閉じる">×</button></div>
+    <div class="suprog"><i style="width:${done / 3 * 100}%"></i></div>${steps}<div class="subody">${body}</div>
+    ${SU.msg ? `<p class="sumsg">${esc(SU.msg)}</p>` : ''}
+    <div class="sufoot">${s > 0 ? '<button class="btn" data-su="prev">← 戻る</button>' : ''}<span style="flex:1"></span>${s < 3 ? `<button class="btn" data-su="later">あとで設定する</button><button class="btn ${st[s].done || st[s].skip ? 'primary' : ''}" data-su="next">${st[s].done || st[s].skip ? '次へ →' : 'とばして次へ →'}</button>` : '<button class="btn primary" data-su="finish">はじめる</button>'}</div>`;
+}
+document.addEventListener('click', async e => {
+  if (e.target.closest('#setupBtn')) { setupOpen(); return; }
+  const b = e.target.closest('[data-su]'); if (!b) return; const a = b.dataset.su;
+  if (a === 'close' || a === 'later') { setupCfg.seen = true; setupSave(); setupClose(); return; }
+  if (a === 'finish') { setupCfg.seen = true; setupCfg.done = true; setupSave(); setupClose(); return; }
+  if (a === 'go') { SU.step = +b.dataset.i; SU.msg = ''; setupRender(); return; }
+  if (a === 'next') { SU.step = Math.min(3, SU.step + 1); SU.msg = ''; setupRender(); return; }
+  if (a === 'prev') { SU.step = Math.max(0, SU.step - 1); SU.msg = ''; setupRender(); return; }
+  if (a === 'file') { document.getElementById('suFile').click(); return; }
+  if (a === 'sample') { if (state.fmt !== 'db') { state.fmt = 'db'; save(); renderAll(); } state.db = makeScaleSample(); if (!state.db.semModel) state.db.semModel = emptySemModel(); state.opt.dbTab = 'fa'; setupCfg.sample = true; setupSave(); save(); renderAll(); SU.msg = '練習用のデータ（尺度データ）を読み込みました。'; setupRender(); return; }
+  if (a === 'rec') { if (await recPick()) { recCfg.on = true; recCfgSave(); recUi(); SU.msg = `結果の保存先を「${REC.name}」にしました。解析のたびに自動で記録します。`; } setupRender(); return; }
+  if (a === 'r') { if (await rlinkPick()) SU.msg = `R の作業フォルダを「${RLINK.name}」にしました。`; setupRender(); return; }
+  if (a === 'skiprec') { setupCfg.skipRec = true; setupSave(); SU.step = 2; setupRender(); return; }
+  if (a === 'skipr') { setupCfg.skipR = true; setupSave(); SU.step = 3; setupRender(); return; }
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'suFile' || !e.target.files.length) return;
+  const files = [...e.target.files]; e.target.value = '';
+  if (state.fmt !== 'db') { state.fmt = 'db'; save(); renderAll(); }
+  const dlg = document.getElementById('setupDlg'); if (dlg) dlg.hidden = true; // 「置き換えますか？」の確認がデータシートに出るので、いったん隠す
+  try { await importFiles(files); } catch (err) { }
+  if (dlg) dlg.hidden = false;
+  if (state.db.file) { setupCfg.sample = false; setupSave(); SU.msg = `「${state.db.file}」を読み込みました。`; } else SU.msg = '読み込めませんでした。データシートの上のメッセージを確かめてください。';
+  setupRender();
+});
+document.addEventListener('input', e => { if (e.target.id === 'suStudy') { recCfg.study = e.target.value; recCfgSave(); } });
+// 「はじめの設定」ボタンと、初めて開いたときの表示
+document.querySelector('header.top')?.insertAdjacentHTML('beforeend', '<button class="btn setupbtn" id="setupBtn" title="データの読み込み・結果の保存先・R の作業フォルダを順番に設定します">はじめの設定</button>');
+setTimeout(async () => { await Promise.all([recRestore(), rlinkRestore()]); if (!setupCfg.seen) setupOpen(); }, 300);
 
 
 function renderAll() { renderTabs(); renderSheet(); renderPanel(); }

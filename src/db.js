@@ -84,7 +84,21 @@ function isMiss(c, v, ms) { // 「9, 99」のような個別の値と「90~99」
   return ms.some(m => { const r = m.split('~'); if (r.length === 2 && isFinite(n)) { const lo = /^lo/i.test(r[0].trim()) ? -Infinity : toNum(r[0]), hi = /^hi/i.test(r[1].trim()) ? Infinity : toNum(r[1]); return n >= lo && n <= hi; } return m === v || (isFinite(n) && toNum(m) === n); });
 }
 function rawCol(j) { const v = rawColBase(j), m = typeof filterMask === 'function' ? filterMask() : null; return m ? v.map((x, i) => m[i] ? x : '') : v; } // ケースの選択中は、選ばれていない人を欠損に
-function rawColBase(j) { const c = state.db.cols[j], ms = missSet(c); return state.db.rows.map(r => { const v = String(r[j] ?? '').trim(); return isMiss(c, v, ms) ? '' : v; }); }
+function rawColBase(j) { const c = state.db.cols[j], ms = missSet(c), num = c.vtype === 'num'; return state.db.rows.map(r => { const v = String(r[j] ?? '').trim(); return isMiss(c, v, ms) || (num && v !== '' && !isFinite(toNum(v))) ? '' : v; }); }
+// ----- 変数の型（自動・数値・文字・日付）-----
+const VTYPES = [['', '自動', '中身を見て決めます（数字だけなら数値、文字がまじれば文字）'], ['num', '数値', '計算に使います。数字でない値（NA など）は欠損として扱います'], ['str', '文字', 'カテゴリ（群）として扱います。1・2 で入れた性別なども、ここにすると群になります'], ['date', '日付', '2026/11/28 のような日付。統計の計算には使いません']];
+const TBADGE = { num: '数', cat: '類', date: '日', empty: '−' };
+function parseDate(v) { // 2026/11/28・2026-11-28・2026年11月28日（時刻つきも可）
+  const m = String(v).trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).match(/^(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})日?(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null; const d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)); return d.getMonth() === +m[2] - 1 ? d : null;
+}
+function vtypeInfo(j) { // 型を決めたことで扱いが変わる値の数
+  const c = state.db.cols[j], ms = missSet(c); let bad = 0; const ex = new Set();
+  state.db.rows.forEach(r => { const v = String(r[j] ?? '').trim(); if (v === '' || isMiss(c, v, ms)) return; if ((c.vtype === 'num' && !isFinite(toNum(v))) || (c.vtype === 'date' && !parseDate(v))) { bad++; if (ex.size < 3) ex.add(v); } });
+  return { bad, ex: [...ex] };
+}
+function setVtype(j, t) { const c = state.db.cols[j]; c.vtype = t; if (t === 'num' && c.measure === 'nominal') c.measure = ''; if (t === 'str' && !c.measure) c.measure = 'nominal'; save(); }
+function vtypeNote(j) { const c = state.db.cols[j]; if (!c.vtype || c.vtype === 'str') return ''; const I = vtypeInfo(j); if (!I.bad) return ''; return c.vtype === 'num' ? `数字でない値 ${I.bad} 件（${I.ex.map(v => '「' + esc(v) + '」').join('')}${I.bad > I.ex.length ? '…' : ''}）を欠損として扱っています。` : `日付として読めない値が ${I.bad} 件あります（${I.ex.map(v => '「' + esc(v) + '」').join('')}）。`; }
 function autoType(v) { v = v.filter(x => x !== ''); if (!v.length) return 'empty'; return v.every(x => !isNaN(toNum(x))) ? 'num' : 'cat'; }
 function nonNumInfo(j) { // 数字として読めない値（欠損値の指定を除く）を数える
   const cnt = new Map(); let nNum = 0;
@@ -93,7 +107,7 @@ function nonNumInfo(j) { // 数字として読めない値（欠損値の指定�
   return { bad, nBad, nNum, tokenOk: bad.every(([v]) => !/[\s,、，~]/.test(v)) };
 }
 function nonNumSuspect(j) { // 数値のつもりの列に、数字でない値がまじっていそうか
-  const c = state.db.cols[j]; if (c.measure === 'nominal') return null; const I = nonNumInfo(j); if (!I.nBad || !I.nNum) return null;
+  const c = state.db.cols[j]; if (c.measure === 'nominal' || c.vtype) return null; const I = nonNumInfo(j); if (!I.nBad || !I.nNum) return null;
   return c.measure === 'scale' || c.measure === 'ordinal' || (I.bad.length <= 5 && I.nNum >= I.nBad * 4) ? I : null;
 }
 function nonNumText(I, max = 4) { return I.bad.slice(0, max).map(([v, k]) => `「${esc(v)}」${k} 件`).join('、') + (I.bad.length > max ? ` ほか ${I.bad.length - max} 種類` : ''); }
@@ -101,7 +115,7 @@ function nonNumToMissing(js) { // 数字でない値を各列の欠損値に足�
   let done = 0; js.forEach(j => { const I = nonNumSuspect(j); if (!I || !I.tokenOk) return; const c = state.db.cols[j], cur = missSet(c); I.bad.forEach(([v]) => { if (!cur.includes(v)) cur.push(v); }); c.missing = cur.join(', '); done++; });
   return done;
 }
-function colType(j) { const t = autoType(rawCol(j)), m = state.db.cols[j].measure; if (t === 'empty') return t; return m === 'nominal' ? 'cat' : t; }
+function colType(j) { const c = state.db.cols[j], t = autoType(rawCol(j)); if (t === 'empty') return t; if (c.vtype === 'date') return 'date'; if (c.vtype === 'str') return 'cat'; if (c.vtype === 'num') return 'num'; return c.measure === 'nominal' ? 'cat' : t; }
 const LABEL_RANK = {};
 function vlMap(c) { const mp = {}; (c.values || []).forEach(([k, l], i) => { if (String(k).trim() !== '' && String(l).trim() !== '') { const key = String(k).trim(); mp[key] = String(l).trim(); LABEL_RANK[mp[key]] = isFinite(toNum(key)) ? toNum(key) : 1e6 + i; } }); return mp; }
 function codeToLabel(c, v) { if (v === '') return v; const mp = vlMap(c); if (mp[v] != null) return mp[v]; const n = toNum(v); if (isFinite(n)) { const k = Object.keys(mp).find(x => toNum(x) === n); if (k != null) return mp[k]; } return v; }
@@ -137,7 +151,7 @@ function renderDbSheet(f) {
     </div>${rlinkBox()}${cbHelp()}`;
   if (view === 'prep') { $('#sheetBody').innerHTML = tabs + filterBanner() + renderPrepView() + tools; $('#oVlab').value = state.opt.vlab || 'label'; return; }
   if (view === 'var') { $('#sheetBody').innerHTML = tabs + filterBanner() + renderVarView() + tools; $('#oVlab').value = state.opt.vlab || 'label'; return; }
-  const head = '<tr><th class="rn">#</th>' + d.cols.map((c, j) => `<th title="${esc(c.label || '')}"><div class="colhd"><span class="tbadge ${colType(j)}">${{ num: '数', cat: '類', empty: '−' }[colType(j)]}</span><input class="name" id="nm-${j}" data-nm="${j}" value="${esc(c.name)}"></div></th>`).join('') + '</tr>';
+  const head = '<tr><th class="rn">#</th>' + d.cols.map((c, j) => `<th title="${esc(c.label || '')}"><div class="colhd"><button class="tbadge ${colType(j)}${c.vtype ? ' fixed' : ''}${vtypeNote(j) || (colType(j) === 'cat' && nonNumSuspect(j)) ? ' warn' : ''}" data-vtj="${j}" title="型：${(VTYPES.find(v => v[0] === (c.vtype || '')) || VTYPES[0])[1]}（押すと変えられます）">${TBADGE[colType(j)]}</button><input class="name" id="nm-${j}" data-nm="${j}" value="${esc(c.name)}"></div></th>`).join('') + '</tr>';
   const disp = d.cols.map((c, j) => showVL && (c.values || []).length ? v => codeToLabel(c, String(v ?? '').trim()) : null), ms = d.cols.map(c => missSet(c));
   const fm = filterMask(), body = d.rows.map((r, i) => `<tr${fm && !fm[i] ? ' class="fout"' : ''}><td class="rn">${i + 1}</td>` + d.cols.map((c, j) => { const v = r[j] ?? '', miss = isMiss(c, String(v).trim(), ms[j]); return `<td><input class="cell${miss ? ' miss' : ''}" id="c-${i}-${j}" data-r="${i}" data-c="${j}" value="${esc(disp[j] ? disp[j](v) : v)}" ${disp[j] ? `readonly title="値 ${esc(v)}"` : ''}></td>`; }).join('') + '</tr>').join('');
   $('#sheetBody').innerHTML = tabs + filterBanner() + `<p class="hint" style="margin-bottom:8px">${f.desc} 変数ビューで、ラベル（項目内容）・値ラベル（1＝男性 など）・欠損値を決められます。</p>
@@ -210,8 +224,9 @@ function renderVarView() {
       <td><select data-vm="${j}">${MEASURES.map(([v, l]) => `<option value="${v}" ${(c.measure || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td class="vsum"><button class="btn" data-vact="edit" data-j="${j}">${vals.length ? '編集' : '設定'}</button> <span>${sum || '<span class="hint">なし</span>'}</span></td>
       <td><input class="vmiss" data-vmiss="${j}" value="${esc(c.missing || '')}" placeholder="例：99"></td>
-      <td><span class="tbadge ${t}">${{ num: '数', cat: '類', empty: '−' }[t]}</span>${t === 'cat' && nonNumSuspect(j) ? ' <b style="color:var(--sig)" title="数字でない値があります">⚠</b>' : ''}</td><td class="total">${nValid}</td></tr>`;
-    { const I = t === 'cat' ? nonNumSuspect(j) : null; if (I) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="warn" style="margin:2px 0">「${esc(c.name)}」は数字の列のようですが、<b>数字でない値</b>（${nonNumText(I)}）があるため「類」になっています。${I.tokenOk ? `無回答の印なら <button class="btn" data-vact="nonnum" data-j="${j}">欠損値にする</button> を押すと「数」になります。打ち間違いなら、データビューで直してください。` : 'データビューで値を直してください（空白やカンマを含む値は欠損値に指定できません）。'}</p></td></tr>`; }
+      <td style="white-space:nowrap"><span class="tbadge ${t}">${TBADGE[t]}</span> <select data-vty="${j}" title="変数の型">${VTYPES.map(([v, l]) => `<option value="${v}" ${(c.vtype || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${t === 'cat' && nonNumSuspect(j) ? ' <b style="color:var(--sig)" title="数字でない値があります">⚠</b>' : ''}</td><td class="total">${nValid}</td></tr>`;
+    { const nt = vtypeNote(j); if (nt) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="note" style="margin:2px 0">「${esc(c.name)}」：${nt}</p></td></tr>`; }
+    { const I = t === 'cat' ? nonNumSuspect(j) : null; if (I) h += `<tr class="vvwarn"><td></td><td colspan="7"><p class="warn" style="margin:2px 0">「${esc(c.name)}」は数字の列のようですが、<b>数字でない値</b>（${nonNumText(I)}）があるため「類」になっています。${I.tokenOk ? `無回答の印なら <button class="btn" data-vact="nonnum" data-j="${j}">欠損値にする</button> を押すと「数」になります。` : ''}<button class="btn" data-vact="asnum" data-j="${j}">型を「数値」にする</button> と、数字でない値をすべて欠損として扱います。打ち間違いなら、データビューで直してください。</p></td></tr>`; }
     if (vvOpen === j) {
       const lv = levelsOf(raw).slice(0, 40);
       h += `<tr class="vvedit"><td></td><td colspan="7"><div class="vvbox"><b>値ラベル：${esc(c.name)}</b>
@@ -232,6 +247,7 @@ $('#sheetBody').addEventListener('click', e => {
   const vt = e.target.closest('[data-view]'); if (vt) { state.opt.dbView = vt.dataset.view; vvOpen = -1; save(); renderSheet(); return; }
   const b = e.target.closest('[data-vact]'); if (!b) return; const act = b.dataset.vact;
   if (act === 'nonnum') { nonNumToMissing([+b.dataset.j]); varViewRefresh(true); return; }
+  if (act === 'asnum') { setVtype(+b.dataset.j, 'num'); varViewRefresh(true); return; }
   if (act === 'opensav') { $('#savFile').click(); return; }
   if (act === 'opencb') { $('#cbFile').click(); return; }
   if (act === 'rlink') { rlinkExport(e.target.closest('button')); return; }
@@ -260,11 +276,12 @@ $('#sheetBody').addEventListener('change', e => {
   if (el.id === 'oVlab') { state.opt.vlab = el.value; save(); return; }
   if (el.id === 'oShowVL') { state.opt.showVL = el.checked; save(); renderSheet(); return; }
   if (el.dataset.vm != null) { state.db.cols[+el.dataset.vm].measure = el.value; varViewRefresh(true); return; }
+  if (el.dataset.vty != null) { setVtype(+el.dataset.vty, el.value); varViewRefresh(true); return; }
   if (el.dataset.vmiss != null || el.dataset.vn != null || el.dataset.vl != null) { varViewRefresh(true); return; }
   if (el.dataset.vcode != null || el.dataset.vlab != null) varViewRefresh(false);
 });
 let autoTimer = 0;
-function dbChanged() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { renderAutoGraphs(); document.querySelectorAll('#grid .tbadge').forEach((b, j) => { const t = colType(j); b.className = 'tbadge ' + t; b.textContent = { num: '数', cat: '類', empty: '−' }[t]; }); renderDbPanel(true); }, 350); }
+function dbChanged() { clearTimeout(autoTimer); autoTimer = setTimeout(() => { renderAutoGraphs(); document.querySelectorAll('#grid .tbadge').forEach((b, j) => { const t = colType(j); b.className = 'tbadge ' + t + (state.db.cols[j] && state.db.cols[j].vtype ? ' fixed' : ''); b.textContent = TBADGE[t]; }); renderDbPanel(true); }, 350); }
 function renderAutoGraphs() {
   const box = $('#autoG'); if (!box) return;
   box.innerHTML = state.db.cols.map((c, j) => {
@@ -1465,3 +1482,19 @@ ANALYSES.db.ancova2 = function () {
   h += apa('論文記載例', `${cn.join('・')}を共変量とする二要因の共分散分析の結果、${nA}の主効果（<i>F</i>(${A.T.A.df}, ${A.error.df}) = ${fmt(A.T.A.F, 2)}, ${apaP(A.T.A.p)}, 偏 η² = ${fmt(A.T.A.peta2, 2)}）、${nB}の主効果（<i>F</i>(${A.T.B.df}, ${A.error.df}) = ${fmt(A.T.B.F, 2)}, ${apaP(A.T.B.p)}, 偏 η² = ${fmt(A.T.B.peta2, 2)}）、交互作用（<i>F</i>(${inter.df}, ${A.error.df}) = ${fmt(inter.F, 2)}, ${apaP(inter.p)}, 偏 η² = ${fmt(inter.peta2, 2)}）について検討した。${inter.p < .05 ? '交互作用が有意であったため、単純主効果の検定を行った。' : ''}`);
   return { title: `二要因の共分散分析（${vn(y)} × ${vn(a)} × ${vn(b)}、共変量：${cv.map(j => vn(j)).join('・')}）`, html: h };
 };
+
+// ----- データビューの見出しの「数・類・日」を押して型を変える -----
+function vtMenuClose() { document.getElementById('vtMenu')?.remove(); }
+$('#sheetBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-vtj]'); if (!b || state.fmt !== 'db') return; e.stopPropagation();
+  const j = +b.dataset.vtj, c = state.db.cols[j]; if (document.getElementById('vtMenu')?.dataset.j === String(j)) { vtMenuClose(); return; } vtMenuClose();
+  const r = b.getBoundingClientRect(), note = vtypeNote(j), sus = colType(j) === 'cat' ? nonNumSuspect(j) : null;
+  document.body.insertAdjacentHTML('beforeend', `<div class="vtmenu" id="vtMenu" data-j="${j}" style="left:${Math.min(r.left, innerWidth - 300) + scrollX}px;top:${r.bottom + 4 + scrollY}px"><b>「${esc(c.name || '列' + (j + 1))}」の型</b>
+    ${VTYPES.map(([v, l, d]) => `<button class="vtopt${(c.vtype || '') === v ? ' on' : ''}" data-vtset="${v}"><span class="tbadge ${v === 'num' ? 'num' : v === 'str' ? 'cat' : v === 'date' ? 'date' : ''}">${v === 'num' ? '数' : v === 'str' ? '類' : v === 'date' ? '日' : '自'}</span><span><b>${l}</b><small>${d}</small></span></button>`).join('')}
+    ${note ? `<p class="note" style="margin:6px 0 0">${note}</p>` : ''}${sus ? `<p class="warn" style="margin:6px 0 0">数字でない値（${nonNumText(sus, 3)}）があるため「類」になっています。「数値」を選ぶと、それらを欠損として扱います。</p>` : ''}</div>`);
+});
+document.addEventListener('click', e => {
+  const m = document.getElementById('vtMenu'); if (!m) return; const o = e.target.closest('[data-vtset]');
+  if (o) { setVtype(+m.dataset.j, o.dataset.vtset); vtMenuClose(); renderSheet(); renderDbPanel(true); return; }
+  if (!e.target.closest('#vtMenu')) vtMenuClose();
+});
